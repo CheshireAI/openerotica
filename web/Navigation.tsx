@@ -57,7 +57,7 @@ const MobileNavHeader = () => {
       <div>
         {' '}
         <span class="w-full text-center text-[1rem]">
-          Agn<span class="text-[var(--hl-500)]">ai</span>
+          Open<span class="text-[var(--hl-500)]">Erotica</span>
           {suffix()}
         </span>
       </div>
@@ -123,12 +123,12 @@ const Navigation: Component = () => {
       >
         <div ref={content} class="drawer__content sm:text-md text-md flex flex-col gap-0  sm:gap-1">
           <div class="hidden w-full items-center justify-center sm:flex">
-            <A href="/" role="link" aria-label="Agnaistic main page">
+            <A href="/" role="link" aria-label="Openerotica main page">
               <div
                 class="h-8 w-fit items-center justify-center rounded-lg font-bold"
                 aria-hidden="true"
               >
-                Agn<span class="text-[var(--hl-500)]">ai</span>
+                Open<span class="text-[var(--hl-500)]">Erotica</span>
                 {suffix()}
               </div>
             </A>
@@ -233,7 +233,7 @@ const UserNavigation: Component = () => {
         </Item>
 
         <Show when={menu.config.patreon}>
-          <ExternalLink href="https://patreon.com/Agnaistic" newtab ariaLabel="Patreon">
+          <ExternalLink href="https://patreon.com/openerotica" newtab ariaLabel="Patreon">
             <HeartHandshake aria-hidden="true" />
           </ExternalLink>
         </Show>
@@ -349,7 +349,7 @@ const GuestNavigation: Component = () => {
         </Item>
 
         <Show when={menu.config.patreon}>
-          <ExternalLink href="https://patreon.com/Agnaistic" newtab ariaLabel="Patreon">
+          <ExternalLink href="https://patreon.com/openerotica" newtab ariaLabel="Patreon">
             <HeartHandshake aria-hidden="true" />
           </ExternalLink>
         </Show>
