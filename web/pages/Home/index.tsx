@@ -45,7 +45,7 @@ const HomePage: Component = () => {
         <div class="flex text-orange-500" role="alert">
           <AlertTriangle class="mb-2 mr-2" aria-hidden="true" />
           Your browser does not support local storage. You will need to login/register to use
-          Agnaistic.
+          Openerotica.
         </div>
       </Show>
 
@@ -57,7 +57,7 @@ const HomePage: Component = () => {
           aria-labelledby="homeTitle"
         >
           <span id="homeTitle" aria-hidden="true">
-            Agn<span class="text-[var(--hl-500)]">ai</span>
+            Open<span class="text-[var(--hl-500)]">Erotica</span>
           </span>
         </div>
 
@@ -72,8 +72,8 @@ const HomePage: Component = () => {
             ariaRole="region"
             ariaLabel="Models"
           >
-            Agnaistic now hosts its own models! Use them for free by using the{' '}
-            <span class="font-bold">&nbsp;Agnaistic&nbsp;</span> service in your presets
+            Openerotica now hosts its own models! Use them for free by using the{' '}
+            <span class="font-bold">&nbsp;Openerotica&nbsp;</span> service in your presets
           </TitleCard>
         </Show>
 
@@ -108,10 +108,10 @@ const HomePage: Component = () => {
           <TitleCard type="bg" title="Links" center ariaRole="region" ariaLabel="Links">
             <div class="flex flex-wrap justify-center gap-2">
               <a href="/discord" target="_blank">
-                <Pill inverse>Agnaistic Discord</Pill>
+                <Pill inverse>Openerotica Discord</Pill>
               </a>
 
-              <A href="https://github.com/agnaistic/agnai" target="_blank">
+              <A href="https://github.com/cheshireai/openerotica" target="_blank">
                 <Pill inverse>GitHub</Pill>
               </A>
             </div>
@@ -341,7 +341,7 @@ const Features: Component = () => (
       </div>
       <div class="flex flex-col gap-2 leading-6">
         <p>
-          <b class="highlight">Agnaistic</b> is completely free to use. It is free to register. Your
+          <b class="highlight">Openerotica</b> is completely free to use. It is free to register. Your
           data will be kept private and you can permanently delete your data at any time. We take
           your privacy very seriously.
         </p>
