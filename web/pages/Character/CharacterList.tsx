@@ -20,6 +20,7 @@ import { CharacterCardView } from './components/CharacterCardView'
 import { CharacterFolderView } from './components/CharacterFolderView'
 import Modal from '/web/shared/Modal'
 import { CreateCharacterForm } from './CreateCharacterForm'
+import { ManualPaginate, usePagination } from '/web/shared/Paginate'
 
 const CACHE_KEY = 'agnai-charlist-cache'
 
@@ -40,24 +41,61 @@ const sortOptions: Option<SortField>[] = [
 const CharacterList: Component = () => {
   setComponentPageTitle('Characters')
 
-  const [query, setQuery] = useSearchParams()
-
-  const cfg = settingStore()
-  const user = userStore()
-  const state = chatStore((s) => ({
-    list: s.allChars.list.filter((ch) => ch.userId === user.user?._id),
-    loading: s.allLoading,
-    loaded: s.loaded,
-  }))
-
   const cached = getListCache()
-  const [view, setView] = createSignal(cached.view || 'list')
+  const [query, setQuery] = useSearchParams()
+  const [search, setSearch] = createSignal('')
   const [sortField, setSortField] = createSignal(cached.sort.field)
   const [sortDirection, setSortDirection] = createSignal(cached.sort.direction)
-  const [search, setSearch] = createSignal('')
+
+  const tags = tagStore((s) => ({ filter: s.filter, hidden: s.hidden }))
+  const cfg = settingStore()
+  const user = userStore()
+  const state = chatStore((s) => {
+    const favorites = s.allChars.list.filter((ch) => ch.favorite)
+    return {
+      allChars: s.allChars.list,
+      list: s.allChars.list.filter((ch) => ch.userId === user.user?._id && !ch.favorite),
+
+      favorites,
+      loading: s.allLoading,
+      loaded: s.loaded,
+    }
+  })
+
+  const sortedChars = createMemo(() => {
+    const field = sortField()
+    const dir = sortDirection()
+    const sorted = state.list
+      .slice()
+      .filter((ch) => ch.name.toLowerCase().includes(search().toLowerCase().trim()))
+      .filter((ch) => tags.filter.length === 0 || ch.tags?.some((t) => tags.filter.includes(t)))
+      .sort(getSortFunction(field, dir))
+    return sorted
+  })
+
+  const sortedFaves = createMemo(() => {
+    const field = sortField()
+    const dir = sortDirection()
+    const sorted = state.favorites
+      .slice()
+      .filter((ch) => ch.name.toLowerCase().includes(search().toLowerCase().trim()))
+      .filter((ch) => tags.filter.length === 0 || ch.tags?.some((t) => tags.filter.includes(t)))
+      .sort(getSortFunction(field, dir))
+    return sorted
+  })
+
+  const [view, setView] = createSignal(cached.view || 'list')
   const [showImport, setImport] = createSignal(false)
   const [importPath, setImportPath] = createSignal<string | undefined>(query.import)
   const importQueue: NewCharacter[] = []
+
+  const [pageSize, _setPageSize] = createSignal(50)
+
+  const pager = usePagination({
+    name: 'character-list',
+    items: sortedChars,
+    pageSize: pageSize(),
+  })
 
   const onImport = (chars: NewCharacter[]) => {
     importQueue.push(...chars)
@@ -83,8 +121,8 @@ const CharacterList: Component = () => {
   }
 
   createEffect(() => {
-    if (!state.list.length) return
-    tagStore.updateTags(state.list)
+    if (!state.allChars.length) return
+    tagStore.updateTags(state.allChars)
   })
 
   createEffect(() => {
@@ -179,15 +217,23 @@ const CharacterList: Component = () => {
           </div>
         </div>
       </div>
+      <div class="flex justify-center pb-2">
+        <ManualPaginate pager={pager} />
+      </div>
       <Characters
-        characters={state.list}
+        characters={pager.items()}
         loading={state.loading || false}
         loaded={!!state.loaded}
         type={view()}
         filter={search()}
         sortField={sortField()}
         sortDirection={sortDirection()}
+        favorites={sortedFaves()}
       />
+      <div class="flex justify-center pb-5 pt-2">
+        <ManualPaginate pager={pager} />
+      </div>
+
       <ImportCharacterModal
         charhubPath={importPath()}
         show={showImport() || !!importPath()}
@@ -200,6 +246,7 @@ const CharacterList: Component = () => {
 
 const Characters: Component<{
   characters: AppSchema.Character[]
+  favorites: AppSchema.Character[]
   loading: boolean
   loaded: boolean
   type: ViewType
@@ -207,20 +254,12 @@ const Characters: Component<{
   sortField: SortField
   sortDirection: SortDirection
 }> = (props) => {
-  const tags = tagStore((s) => ({ filter: s.filter, hidden: s.hidden }))
   const [editChar, setEditChar] = createSignal<AppSchema.Character>()
   const [showGrouping, setShowGrouping] = createSignal(false)
   const groups = createMemo(() => {
-    const list = props.characters
-      .slice()
-      .filter((ch) => ch.name.toLowerCase().includes(props.filter.toLowerCase()))
-      .filter((ch) => tags.filter.length === 0 || ch.tags?.some((t) => tags.filter.includes(t)))
-      .filter((ch) => !ch.tags || !ch.tags.some((t) => tags.hidden.includes(t)))
-      .sort(getSortFunction(props.sortField, props.sortDirection))
-
     const groups = [
-      { label: 'Favorites', list: list.filter((c) => c.favorite) },
-      { label: '', list: list.filter((c) => !c.favorite) },
+      { label: 'Favorites', list: props.favorites },
+      { label: '', list: props.characters },
     ]
     if (groups[0].list.length === 0) {
       setShowGrouping(false)
@@ -360,7 +399,7 @@ function saveListCache(cache: ListCache) {
 
 const NoCharacters: Component = () => (
   <div class="mt-16 flex w-full justify-center rounded-full text-xl">
-    You have no characters!&nbsp;
+    No characters found&nbsp;
     <A class="text-[var(--hl-500)]" href="/character/create">
       Create a character
     </A>
