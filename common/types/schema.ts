@@ -32,6 +32,7 @@ export type AllDoc =
   | AppSchema.ScenarioBook
   | AppSchema.ApiKey
   | AppSchema.PromptTemplate
+  | AppSchema.Configuration
 
 export type OAuthScope = keyof typeof oauthScopes
 
@@ -43,6 +44,38 @@ export type ChatBranch = {
 }
 
 export namespace AppSchema {
+  export interface Configuration {
+    kind: 'configuration'
+
+    /** JSON - merges with slots.txt, but this takes precedence when field collisions occur */
+    slots: string
+
+    /** Determines who can use API access for inferencing */
+    apiAccess: 'off' | 'users' | 'subscribers' | 'admins'
+
+    maintenance: boolean
+
+    /** Markdown */
+    maintenanceMessage: string
+
+    /** Not yet implemented */
+    policiesEnabled: boolean
+
+    /** Not yet implemented */
+    tosUpdated: string
+    /** Not yet implemented */
+    termsOfService: string
+
+    /** Not yet implemented */
+    privacyUpdated: string
+    /** Not yet implemented */
+    privacyStatement: string
+
+    /** Concatenated to adapters listed in ADAPTERS envvar */
+    /** Not yet implemented */
+    enabledAdapters: string[]
+  }
+
   export interface Announcement {
     kind: 'announcement'
     _id: string
@@ -65,6 +98,11 @@ export namespace AppSchema {
 
     productId: string
     priceId: string
+    patreon?: {
+      tierId: string
+      cost: number
+    }
+    apiAccess: boolean
 
     name: string
     description: string
@@ -82,6 +120,7 @@ export namespace AppSchema {
     name: string
     level: number
     service: AIAdapter
+    preset: GenSettings
   }
 
   export interface AppConfig {
@@ -95,7 +134,11 @@ export namespace AppSchema {
     maintenance?: string
     patreon?: boolean
     policies?: boolean
+    apiAccess?: boolean
     flags?: string
+    patreonAuth?: {
+      clientId: string
+    }
 
     pipelineProxyEnabled: boolean
     authUrls: string[]
@@ -105,6 +148,10 @@ export namespace AppSchema {
     }
     openRouter: { models: OpenRouterModel[] }
     subs: Array<SubscriptionOption>
+
+    /** @todo remove after next deployment */
+    tier?: AppSchema.SubscriptionTier
+    serverConfig?: Configuration
   }
 
   export type ChatMode = 'standard' | 'adventure'
@@ -133,6 +180,7 @@ export namespace AppSchema {
     kind: 'user'
     username: string
     hash: string
+    apiKey?: string
 
     admin: boolean
 
@@ -186,9 +234,27 @@ export namespace AppSchema {
     ui?: UISettings
 
     sub?: {
+      type?: 'native' | 'patreon' | 'manual'
       tierId: string
       level: number
       last?: string
+    }
+
+    patreonUserId?: string | null
+    patreon?: {
+      access_token: string
+      refresh_token: string
+      expires_in: number
+      scope: string
+      token_type: string
+      expires: string
+      user: Patreon.User
+      tier?: Patreon.Tier
+      member?: Patreon.Member
+      sub?: {
+        tierId: string
+        level: number
+      }
     }
 
     billing?: {
@@ -392,6 +458,7 @@ export namespace AppSchema {
     allowGuestUsage?: boolean
     isDefaultSub?: boolean
     deletedAt?: string
+    tokenizer?: string
   }
 
   export interface GenSettings {
@@ -405,10 +472,10 @@ export namespace AppSchema {
     repetitionPenaltyRange: number
     repetitionPenaltySlope: number
     typicalP: number
+    minP?: number
     topP: number
     topK: number
     topA: number
-    topG?: number
     mirostatTau?: number
     mirostatLR?: number
     tailFreeSampling: number
@@ -420,6 +487,7 @@ export namespace AppSchema {
     banEosToken?: boolean
     earlyStopping?: boolean
     stopSequences?: string[]
+    trimStop?: boolean
 
     order?: number[]
     disabledSamplers?: number[]
@@ -434,7 +502,8 @@ export namespace AppSchema {
     systemPrompt?: string
     ignoreCharacterSystemPrompt?: boolean
     gaslight?: string
-    useAdvancedPrompt?: boolean
+    promptTemplateId?: string
+    useAdvancedPrompt?: 'basic' | 'validate' | 'no-validation'
     promptOrderFormat?: string
     promptOrder?: Array<{ placeholder: string; enabled: boolean }>
     ultimeJailbreak?: string
@@ -593,3 +662,75 @@ export const defaultGenPresets: AppSchema.GenSettings[] = []
 export type NewBook = Omit<AppSchema.MemoryBook, 'userId' | '_id' | 'kind'>
 
 export type NewScenario = Omit<AppSchema.ScenarioBook, 'userId' | '_id' | 'kind'>
+
+export namespace Patreon {
+  export type Include = Tier | Member
+
+  export type Tier = {
+    id: string
+    type: 'tier'
+    attributes: {
+      amount_cents: number
+      description: string
+      title: string
+    }
+    relationships: {
+      campaign: {
+        data: {
+          id: string
+          type: 'campaign'
+        }
+      }
+    }
+  }
+
+  export type Member = {
+    type: 'member'
+    id: string
+    attributes: {
+      campaign_lifetime_support_cents: number
+      campaign_entitled_amount_cents: number
+      last_charge_date: string
+      last_charge_status:
+        | 'Paid'
+        | 'Declined'
+        | 'Deleted'
+        | 'Pending'
+        | 'Refunded'
+        | 'Fraud'
+        | 'Other'
+        | null
+      next_charge_date: string
+      patron_status: 'active_patron' | 'declined_patron' | 'former_patron'
+      pledge_relationship_start: string
+      will_pay_amount_cents: number
+    }
+    relationships: {
+      currently_entitled_tiers: { data: Array<{ type: 'tier'; id: string }> }
+    }
+  }
+
+  export type User = {
+    type: 'user'
+    id: string
+    attributes: {
+      created: string
+      email: string
+      full_name: string
+    }
+    relationships: {
+      memberships: {
+        data: Array<{ id: string; type: 'member' }>
+      }
+    }
+  }
+
+  export type Authorize = {
+    access_token: string
+    refresh_token: string
+    scope: string
+    expires_in: number
+    token_type: string
+    version: string
+  }
+}

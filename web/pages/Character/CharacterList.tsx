@@ -67,8 +67,10 @@ const CharacterList: Component = () => {
     const dir = sortDirection()
     const sorted = state.list
       .slice()
+      .filter((ch) => ch.userId === user.user?._id)
       .filter((ch) => ch.name.toLowerCase().includes(search().toLowerCase().trim()))
       .filter((ch) => tags.filter.length === 0 || ch.tags?.some((t) => tags.filter.includes(t)))
+      .filter((ch) => !ch.tags || !ch.tags.some((t) => tags.hidden.includes(t)))
       .sort(getSortFunction(field, dir))
     return sorted
   })
@@ -80,6 +82,7 @@ const CharacterList: Component = () => {
       .slice()
       .filter((ch) => ch.name.toLowerCase().includes(search().toLowerCase().trim()))
       .filter((ch) => tags.filter.length === 0 || ch.tags?.some((t) => tags.filter.includes(t)))
+      .filter((ch) => !ch.tags || !ch.tags.some((t) => tags.hidden.includes(t)))
       .sort(getSortFunction(field, dir))
     return sorted
   })
@@ -89,12 +92,10 @@ const CharacterList: Component = () => {
   const [importPath, setImportPath] = createSignal<string | undefined>(query.import)
   const importQueue: NewCharacter[] = []
 
-  const [pageSize, _setPageSize] = createSignal(50)
-
   const pager = usePagination({
     name: 'character-list',
     items: sortedChars,
-    pageSize: pageSize(),
+    pageSize: 50,
   })
 
   const onImport = (chars: NewCharacter[]) => {

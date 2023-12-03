@@ -19,6 +19,7 @@ import { getTokenCounter } from '../tokenize'
 import { getAppConfig } from '../api/settings'
 import { getHandlers, getSubscriptionPreset, handlers } from './agnaistic'
 import { parseStops } from '/common/util'
+import { isDefaultTemplate, templates } from '/common/presets/templates'
 
 let version = ''
 
@@ -40,7 +41,7 @@ configure(async (opts) => {
   return { body: res.body, statusCode: res.statusCode, statusMessage: res.statusMessage }
 }, logger)
 
-type InferenceRequest = {
+export type InferenceRequest = {
   prompt: string
   guest?: string
   user: AppSchema.User
@@ -101,7 +102,7 @@ export async function inferenceAsync(opts: InferenceRequest) {
   throw new Error(`Could not complete inference: Max retries exceeded`)
 }
 
-async function createInferenceStream(opts: InferenceRequest) {
+export async function createInferenceStream(opts: InferenceRequest) {
   const [service, model] = opts.service.split('/')
   const settings = opts.settings || getInferencePreset(opts.user, service as AIAdapter, model)
 
@@ -190,7 +191,10 @@ export async function createTextStreamV2(
     }
 
     if (subContextLimit) {
-      opts.settings.maxContextLength = subContextLimit
+      opts.settings.maxContextLength = Math.min(
+        subContextLimit,
+        opts.settings.maxContextLength ?? 4096
+      )
     }
   }
 
@@ -204,7 +208,10 @@ export async function createTextStreamV2(
     }
 
     if (subContextLimit) {
-      entities.gen.maxContextLength = subContextLimit
+      entities.gen.maxContextLength = Math.min(
+        subContextLimit,
+        entities.gen.maxContextLength ?? 4096
+      )
     }
 
     entities.gen.temporary = opts.settings?.temporary
@@ -231,7 +238,6 @@ export async function createTextStreamV2(
     )
     opts.settings = entities.gen
     opts.user = entities.user
-    opts.settings = entities.gen
     opts.char = entities.char
   }
 
@@ -254,7 +260,7 @@ export async function createTextStreamV2(
   }
 
   const { adapter, isThirdParty, model } = getAdapter(opts.chat, opts.user, opts.settings)
-  const encoder = getTokenCounter(adapter, model)
+  const encoder = getTokenCounter(adapter, model, subscription?.preset)
   const handler = handlers[adapter]
 
   /**
@@ -304,6 +310,7 @@ export async function createTextStreamV2(
     impersonate: opts.impersonate,
     lastMessage: opts.lastMessage,
     subscription,
+    encoder,
   })
 
   return { stream, adapter, settings: gen, user: opts.user, size, length: prompt.length }
@@ -339,6 +346,17 @@ export async function getResponseEntities(
     ? await store.scenario.getScenariosById(chat.scenarioIds)
     : []
   const resolvedScenario = resolveScenario(chat, char, chatScenarios)
+
+  if (genSettings.promptTemplateId) {
+    if (isDefaultTemplate(genSettings.promptTemplateId)) {
+      genSettings.gaslight = templates[genSettings.promptTemplateId]
+    } else {
+      const template = await store.presets.getTemplate(genSettings.promptTemplateId)
+      if (template?.userId == chat.userId) {
+        genSettings.gaslight = template.template
+      }
+    }
+  }
 
   return { char, user, adapter, settings, gen: genSettings, model, book, resolvedScenario }
 }

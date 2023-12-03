@@ -106,6 +106,7 @@ export function getThirdPartyPayload(opts: AdapterProps, stops: string[] = []) {
     const body = {
       prompt,
       temperature: gen.temp,
+      min_p: gen.minP,
       top_k: gen.topK,
       top_p: gen.topP,
       n_predict: gen.maxTokens,
@@ -139,6 +140,7 @@ export function getThirdPartyPayload(opts: AdapterProps, stops: string[] = []) {
       stop_conditions: getStoppingStrings(opts, stops),
       typical: gen.typicalP,
       rep_pen: gen.repetitionPenalty,
+      min_p: gen.minP,
     }
     return body
   }
@@ -152,11 +154,13 @@ export function getThirdPartyPayload(opts: AdapterProps, stops: string[] = []) {
       rep_pen: gen.repetitionPenalty,
       temperature: gen.temp,
       tfs: gen.tailFreeSampling,
+      min_p: gen.minP,
       top_p: gen.topP,
       top_k: gen.topK,
       top_a: gen.topA,
       typical: gen.typicalP,
       stop_sequence: getStoppingStrings(opts, stops),
+      trim_stop: gen.trimStop,
       rep_pen_range: gen.repetitionPenaltyRange,
       rep_pen_slope: gen.repetitionPenaltySlope,
     }
@@ -176,6 +180,7 @@ export function getThirdPartyPayload(opts: AdapterProps, stops: string[] = []) {
     frequency_penalty: gen.frequencyPenalty,
     presence_penalty: gen.presencePenalty,
     top_k: gen.topK,
+    min_p: gen.minP,
     top_a: gen.topA,
     min_length: 0,
     no_repeat_ngram_size: 0,

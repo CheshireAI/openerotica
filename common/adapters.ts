@@ -289,11 +289,11 @@ export const adapterSettings: {
   repetitionPenaltyRange: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic'],
   repetitionPenaltySlope: ['horde', 'novel', 'kobold'],
   tailFreeSampling: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic'],
+  minP: ['llamacpp', 'kobold', 'koboldcpp', 'exllamav2', 'ooba', 'agnaistic'],
   topA: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic'],
   topK: ['horde', 'novel', 'kobold', 'ooba', 'claude', 'agnaistic', 'exllamav2'],
   typicalP: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic', 'exllamav2'],
 
-  topG: ['novel'],
   mirostatLR: ['novel', 'ooba', 'agnaistic', 'llamacpp'],
   mirostatTau: ['novel', 'ooba', 'agnaistic', 'llamacpp'],
   cfgScale: ['novel', 'ooba'],
@@ -311,7 +311,8 @@ export const adapterSettings: {
   presencePenalty: ['openai', 'kobold', 'novel', 'openai-chat'],
   streamResponse: ['openai', 'kobold', 'novel', 'claude', 'ooba', 'agnaistic', 'openai-chat'],
   openRouterModel: ['openrouter'],
-  stopSequences: ['ooba', 'agnaistic', 'novel', 'mancer', 'llamacpp', 'horde', 'exllamav2'],
+  stopSequences: ['ooba', 'agnaistic', 'novel', 'mancer', 'llamacpp', 'horde', 'exllamav2', 'kobold'],
+  trimStop: ['koboldcpp'],
 
   addBosToken: ['ooba', 'agnaistic'],
   banEosToken: ['ooba', 'agnaistic'],
@@ -342,6 +343,7 @@ export const settingLabels: { [key in keyof PresetAISettings]: string } = {
   repetitionPenaltyRange: 'Repetition Penality Range',
   repetitionPenaltySlope: 'Repetition Penalty Slope',
   tailFreeSampling: 'Tail Free Sampling',
+  minP: 'Min P',
   topA: 'Top A',
   topK: 'Top K',
   topP: 'Top P',
@@ -379,7 +381,7 @@ export const settingLabels: { [key in keyof PresetAISettings]: string } = {
   prefill: 'Bot response prefilling',
   phraseRepPenalty: 'Phrase Repetition Penality',
   stopSequences: 'Stop Sequences',
-  topG: 'Top G',
+  trimStop: 'Trim Stop Sequences',
   mirostatTau: 'Mirostat Tau',
   mirostatLR: 'Mirostat LR',
 }
@@ -394,7 +396,6 @@ export const samplerOrders: { [key in AIAdapter]?: Array<keyof PresetAISettings>
     'topA',
     'typicalP',
     'cfgScale',
-    'topG',
     'mirostatTau',
   ],
 }

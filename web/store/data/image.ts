@@ -58,7 +58,11 @@ export async function generateImageWithPrompt(
 
   if (!isLoggedIn() && (!user.images || user.images.type === 'horde')) {
     try {
-      const { text: image } = await horde.generateImage(user, prompt)
+      const { text: image } = await horde.generateImage(
+        user,
+        prompt,
+        user.images?.negative || horde.defaults.image.negative
+      )
       onDone(image)
       return localApi.result({})
     } catch (ex: any) {
@@ -72,6 +76,7 @@ export async function generateImageWithPrompt(
     ephemeral: true,
     source,
   })
+
   return res
 }
 
@@ -117,7 +122,7 @@ async function getChatSummary(settings: Partial<AppSchema.GenSettings>) {
     context: 1024,
     encoder: await getEncoder(),
   }
-  opts.lines = opts.lines.reverse()
+  opts.lines = (opts.lines || []).reverse()
 
   const template = getSummaryTemplate(settings.service!)
   if (!template) throw new Error(`No chat summary template available for "${settings.service!}"`)

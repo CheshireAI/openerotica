@@ -10,9 +10,11 @@ import { errors, StatusError } from '../api/wrap'
 import { encryptPassword, now } from './util'
 import { defaultChars } from '/common/characters'
 import { stripe } from '../api/billing/stripe'
-import { getTier } from './subscriptions'
+import { getCachedTiers, getTier } from './subscriptions'
 import { domain } from '../domains'
 import { store } from '.'
+import { patreon } from '../api/user/patreon'
+import { getUserSubscriptionTier } from '/common/util'
 
 export type NewUser = {
   username: string
@@ -256,14 +258,58 @@ export async function deleteUserAccount(userId: string) {
   await db('profile').updateOne({ userId }, { $set: { handle: 'Unknown', avatar: '' } })
 }
 
-export async function validateSubscription(user: AppSchema.User) {
-  if (user.admin) return Infinity
-  if (!user.sub?.tierId) {
-    return -1
+export async function validateApiAccess(apiKey: string) {
+  const config = await db('configuration').findOne({ kind: 'configuration' })
+  if (!config?.apiAccess || config.apiAccess === 'off') return
+
+  const user = await db('user').findOne({ apiKey })
+  if (!user) return
+
+  if (config.apiAccess === 'admins') {
+    if (!user.admin) return
+    return { user }
   }
 
-  const tier = await getTier(user.sub.tierId)
-  if (!tier.productId) return tier.level ?? -1
+  if (config.apiAccess === 'subscribers') {
+    const tier = store.users.getUserSubTier(user)
+    if (!tier || tier.level <= 0) return
+    const sub = await db('subscription-tier').findOne({ _id: user.sub?.tierId })
+    if (!sub?.apiAccess) return
+
+    return { user }
+  }
+
+  if (config.apiAccess === 'users') return { user }
+}
+
+export async function findByPatreonUserId(id: string) {
+  const user = await db('user').findOne({ patreonUserId: id })
+  return user
+}
+
+export async function validateSubscription(user: AppSchema.User) {
+  if (user.admin) return Infinity
+
+  const sub = getUserSubTier(user)
+  if (!sub) return -1
+
+  const { type, tier, level } = sub
+  if (!tier.enabled) return tier.level ?? -1
+
+  if (type === 'patreon') {
+    if (!user.patreon) return -1
+
+    const expiry = new Date(user.patreon.member?.attributes.next_charge_date || 0)
+    if (expiry.valueOf() <= Date.now()) {
+      const next = await patreon.revalidatePatron(user._id)
+      if (!next) return -1
+      const tier = getUserSubTier(next)
+      if (!tier) return -1
+      return tier.level
+    }
+
+    return level
+  }
 
   const state = await domain.subscription.getAggregate(user._id)
   if (state.state === 'active') {
@@ -272,7 +318,7 @@ export async function validateSubscription(user: AppSchema.User) {
      * The aggregate tier id will be the intended tier id.
      * If these differ then a downgrade has occurred.
      */
-    if (state.tierId !== user.sub.tierId) {
+    if (state.tierId !== sub.tier._id) {
       const nextTier = state.tierId ? await getTier(state.tierId) : null
       await store.users.updateUser(user._id, {
         sub: {
@@ -327,8 +373,12 @@ export async function validateSubscription(user: AppSchema.User) {
   user.billing.lastRenewed = renewedAt.toISOString()
   user.billing.validUntil = validUntil.toISOString()
   user.billing.status = subscription.status === 'active' ? 'active' : 'cancelled'
-  user.sub.level = nextTier.level
-  user.sub.tierId = tierId
+  user.sub = { level: nextTier.level, tierId }
   await updateUser(user._id, { billing: user.billing, sub: user.sub })
   return nextTier.level ?? -1
+}
+
+export function getUserSubTier(user: AppSchema.User) {
+  const tiers = getCachedTiers()
+  return getUserSubscriptionTier(user, tiers)
 }

@@ -1,5 +1,11 @@
 import { neat } from '../util'
 
+type TemplateId = keyof typeof templates
+
+export function isDefaultTemplate(id: string): id is TemplateId {
+  return id in templates
+}
+
 export const templates = {
   Alpaca: neat`
   {{#if system_prompt}}{{system_prompt}}
@@ -24,8 +30,7 @@ export const templates = {
   {{/if}}
   {{#if example_dialogue}}This is how {{char}} should talk: {{example_dialogue}}
   {{/if}}
-  Then the roleplay chat between {{#each bot}}{{.name}}, {{/each}}{{char}} begins.
-  
+  ***  
   {{#each msg}}{{#if .isbot}}### Response:\n{{.name}}: {{.msg}}{{/if}}{{#if .isuser}}### Instruction:\n{{.name}}: {{.msg}}{{/if}}
   {{/each}}
   {{#if ujb}}### Instruction:
@@ -40,21 +45,24 @@ export const templates = {
   
   Write {{char}}'s next reply in a fictional roleplay chat between {{#each bot}}{{.name}}, {{/each}}{{char}}.
   
-  {{char}}'s Persona: {{personality}}
+  {{char}}'s Persona:
+  {{personality}}
   
   {{#if memory}}{{char}}'s Memories:
   {{memory}}
   {{/if}}
-  {{#if scenario}}This scenario of the conversation: {{scenario}}
+  {{#if scenario}}This scenario of the conversation:
+  {{scenario}}
   {{/if}}
-  {{#if example_dialogue}}This is how {{char}} should talk: {{example_dialogue}}
+  {{#if example_dialogue}}This is how {{char}} should talk:
+  {{example_dialogue}}
   {{/if}}
-  Then the roleplay chat between {{#each bot}}{{.name}}, {{/each}}{{char}} begins.
-  
+  ***
   {{#each msg}}{{#if .isbot}}ASSISTANT:\n{{.name}}: {{.msg}}{{/if}}{{#if .isuser}}USER:\n{{.name}}: {{.msg}}{{/if}}
   {{/each}}
-  {{#if ujb}}SYSTEM:{{ujb}}{{/if}}
-  ASSISTANT: {{post}}`,
+  {{#if ujb}}SYSTEM:{{ujb}}
+  {{/if}}
+  ASSISTANT:\n{{post}}`,
   NovelAI: neat`
   {{#if system_prompt}}{{system_prompt}}
   {{/if}}
@@ -90,25 +98,29 @@ export const templates = {
   {{post}}
   `,
   Metharme: neat`
-  {{system_prompt}}
+  {{#if system_prompt}}{{system_prompt}}{{/if}}
 
-  <|system|>Below is an instruction that describes a task. Write a response that appropriately completes the request.
+  Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
   Write {{char}}'s next reply in a fictional roleplay chat between {{#each bot}}{{.name}}, {{/each}}{{char}}.
   
-  {{char}}'s Persona: {{personality}}
-  {{#if memory}}{{char}}'s Memory: {{memory}}
+  {{char}}'s Persona:
+  {{personality}}
+  {{#if memory}}{{char}}'s Memory:
+  {{memory}}
   {{/if}}
-  {{#if scenario}}This scenario of the conversation: {{scenario}}
+  {{#if scenario}}This scenario of the conversation:
+  {{scenario}}
   {{/if}}
-  {{#if example_dialogue}}This is how {{char}} should talk: {{example_dialogue}}
+  {{#if example_dialogue}}This is how {{char}} should talk:
+  {{example_dialogue}}
   {{/if}}
-  Then the roleplay chat between {{#each bot}}{{.name}}, {{/each}}{{char}} begins.
-  
+  ***
   {{#each msg}}{{#if .isbot}}<|model|>{{/if}}{{#if .isuser}}<|user|>{{/if}}{{.name}}: {{.msg}}
   {{/each}}
   {{#if ujb}}<|system|>{{ujb}}
-  {{/if}}<|model|>{{post}}`,
+  {{/if}}
+  <|model|>{{post}}`,
   ChatML: neat`
   {{#if system_prompt}}<|im_start|>system
   {{system_prompt}}<|im_end|>{{/if}}

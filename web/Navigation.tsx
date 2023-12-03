@@ -49,7 +49,7 @@ import { soundEmitter } from './shared/Audio/playable-events'
 
 const MobileNavHeader = () => {
   const user = userStore()
-  const suffix = createMemo(() => (user.user?.sub?.level ?? 0 > 0 ? '+' : ''))
+  const suffix = createMemo(() => (user.sub?.level ?? -1 > 0 ? '+' : ''))
 
   return (
     <div class="flex min-h-[2rem] justify-between sm:hidden">
@@ -78,7 +78,7 @@ const Navigation: Component = () => {
   const chat = chatStore()
   const size = useWindowSize()
 
-  const suffix = createMemo(() => (user.user?.sub?.level ?? 0 > 0 ? '+' : ''))
+  const suffix = createMemo(() => (user.sub?.level ?? -1 > 0 ? '+' : ''))
 
   createEffect(() => {
     if (!state.overlay && state.showMenu) {
@@ -215,6 +215,9 @@ const UserNavigation: Component = () => {
           <span aria-hidden="true">Manage</span>
         </Item>
         <SubMenu>
+          <SubItem href="/admin/configuration" parent="/admin/" ariaLabel="Configuration">
+            Configuration
+          </SubItem>
           <SubItem href="/admin/users" parent="/admin/" ariaLabel="Users">
             Users
           </SubItem>

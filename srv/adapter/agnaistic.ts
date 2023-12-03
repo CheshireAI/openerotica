@@ -32,7 +32,7 @@ export async function getSubscriptionPreset(
   if (!gen) return
   if (gen.service !== 'agnaistic') return
 
-  const level = user.admin ? Infinity : user.sub?.level ?? -1
+  const level = user.admin ? 100 : store.users.getUserSubTier(user)?.level ?? -1
   let error: string | undefined = undefined
   let warning: string | undefined = undefined
 
@@ -102,7 +102,8 @@ export const handleAgnaistic: ModelAdapter = async function* (opts) {
         preset: preset.name,
         presetLevel: preset.subLevel,
         newLevel,
-        userLevel: opts.user.sub?.level,
+        nativeLevel: opts.user.sub?.level,
+        patronLevel: opts.user.patreon?.sub?.level,
       },
       `Subscription insufficient`
     )
@@ -126,6 +127,15 @@ export const handleAgnaistic: ModelAdapter = async function* (opts) {
       ultimeJailbreak,
       systemPrompt,
       stopSequences,
+      maxTokens,
+      gaslight,
+      allowGuestUsage,
+      images,
+      temporary,
+      useAdvancedPrompt,
+      _id,
+      kind,
+      name,
       ...recommended
     } = preset
     Object.assign(opts.gen, recommended)

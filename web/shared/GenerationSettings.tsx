@@ -20,7 +20,7 @@ import {
 } from '../../common/adapters'
 import Divider from './Divider'
 import { Toggle } from './Toggle'
-import { chatStore, presetStore, settingStore } from '../store'
+import { chatStore, presetStore, settingStore, userStore } from '../store'
 import PromptEditor, { BasicPromptTemplate } from './PromptEditor'
 import { Card } from './Card'
 import { FormLabel } from './FormLabel'
@@ -44,6 +44,7 @@ import Tabs from './Tabs'
 import { useSearchParams } from '@solidjs/router'
 import { PhraseBias, StoppingStrings } from './PhraseBias'
 import { AgnaisticSettings } from '../pages/Settings/Agnaistic'
+import { templates } from '/common/presets/templates'
 
 export { GenerationSettings as default }
 
@@ -57,6 +58,7 @@ type Props = {
 
 const GenerationSettings: Component<Props & { onSave: () => void }> = (props) => {
   const opts = chatStore((s) => s.opts)
+  const userState = userStore()
   const [search, setSearch] = useSearchParams()
 
   const services = createMemo<Option[]>(() => {
@@ -67,7 +69,9 @@ const GenerationSettings: Component<Props & { onSave: () => void }> = (props) =>
   const [service, setService] = createSignal(
     props.inherit?.service || (services()[0].value as AIAdapter)
   )
-  const [format, setFormat] = createSignal(props.inherit?.thirdPartyFormat)
+  const [format, setFormat] = createSignal(
+    props.inherit?.thirdPartyFormat || userState.user?.thirdPartyFormat
+  )
   const tabs = ['General', 'Prompt', 'Memory', 'Advanced']
   const [tab, setTab] = createSignal(+(search.tab ?? '0'))
 
@@ -77,10 +81,7 @@ const GenerationSettings: Component<Props & { onSave: () => void }> = (props) =>
   }
 
   onMount(() => {
-    const { templates } = presetStore.getState()
-    if (!templates.length) {
-      presetStore.getTemplates()
-    }
+    presetStore.getTemplates()
   })
 
   return (
@@ -122,7 +123,7 @@ const GenerationSettings: Component<Props & { onSave: () => void }> = (props) =>
               { label: 'ExLlamaV2', value: 'exllamav2' },
               { label: 'KoboldCpp', value: 'koboldcpp' },
             ]}
-            value={props.inherit?.thirdPartyFormat ?? ''}
+            value={props.inherit?.thirdPartyFormat ?? userState.user?.thirdPartyFormat ?? ''}
             service={service()}
             format={format()}
             aiSetting={'thirdPartyFormat'}
@@ -446,6 +447,16 @@ const GeneralSettings: Component<
           disabled={props.disabled}
         />
         <StoppingStrings inherit={props.inherit} service={props.service} format={props.format} />
+        <Toggle
+          fieldName="trimStop"
+          label="Trim Stop Sequences"
+          helperText="Trim Stop Sequences from the AI's response. Does not work with Streaming responses."
+          value={props.inherit?.trimStop ?? false}
+          disabled={props.disabled}
+          service={props.service}
+          format={props.format}
+          aiSetting={'trimStop'}
+        />
         <PhraseBias inherit={props.inherit} service={props.service} format={props.format} />
       </Card>
     </div>
@@ -460,8 +471,15 @@ function modelsToItems(models: Record<string, string>): Option<string>[] {
 const PromptSettings: Component<
   Props & { pane: boolean; format?: ThirdPartyFormat; tab: string }
 > = (props) => {
+  const gaslights = presetStore((s) => ({ list: s.templates }))
   const [useAdvanced, setAdvanced] = createSignal(
-    !props.inherit?._id ? false : props.inherit?.useAdvancedPrompt ?? true
+    !props.inherit?._id
+      ? 'basic'
+      : typeof props.inherit.useAdvancedPrompt === 'string'
+      ? props.inherit.useAdvancedPrompt
+      : props.inherit?.useAdvancedPrompt === true || props.inherit.useAdvancedPrompt === undefined
+      ? 'validate'
+      : 'basic'
   )
 
   const fallbackTemplate = createMemo(() => {
@@ -470,22 +488,41 @@ const PromptSettings: Component<
     return preset?.gaslight || defaultTemplate
   })
 
+  const promptTemplate = createMemo(() => {
+    const id = props.inherit?.promptTemplateId
+    if (!id) return props.inherit?.gaslight || fallbackTemplate()
+
+    if (id in templates) {
+      return templates[id as keyof typeof templates]
+    }
+
+    const gaslight = gaslights.list.find((g) => g._id === id)
+    return gaslight?.template || props.inherit?.gaslight || fallbackTemplate()
+  })
+
   return (
     <div class="flex flex-col gap-4">
       <div class="flex flex-col gap-2" classList={{ hidden: props.tab !== 'Prompt' }}>
         <Card class="flex flex-col gap-4">
-          <Toggle
+          <Select
             fieldName="useAdvancedPrompt"
             label="Use Advanced Prompting"
+            helperMarkdown="**Validated**: Automatically inserts important (i.e., history and post-amble) placeholders during prompt assembly.
+            **Unvalidated**: No auto-insertion is applied during prompt assembly."
+            items={[
+              { label: 'Basic', value: 'basic' },
+              { label: 'Validated', value: 'validate' },
+              { label: 'Unvalidated', value: 'no-validation' },
+            ]}
             value={useAdvanced()}
-            onChange={(ev) => setAdvanced(ev)}
+            onChange={(ev) => setAdvanced(ev.value as any)}
           />
 
-          <BasicPromptTemplate inherit={props.inherit} hide={useAdvanced()} />
+          <BasicPromptTemplate inherit={props.inherit} hide={useAdvanced() !== 'basic'} />
 
           <PromptEditor
             fieldName="gaslight"
-            value={props.inherit?.gaslight || fallbackTemplate()}
+            value={promptTemplate()}
             placeholder={defaultTemplate}
             disabled={props.disabled}
             showHelp
@@ -696,6 +733,20 @@ const GenSettings: Component<Props & { pane: boolean; format?: ThirdPartyFormat;
         />
 
         <RangeInput
+          fieldName="minP"
+          label="Min P"
+          helperText="Used to discard unlikely text in the sampling process. Lower values will make text more predictable. (Put this value on 0 to disable its effect)"
+          min={0}
+          max={1}
+          step={0.01}
+          value={props.inherit?.minP ?? 0}
+          disabled={props.disabled}
+          service={props.service}
+          format={props.format}
+          aiSetting={'minP'}
+        />
+
+        <RangeInput
           fieldName="topP"
           label="Top P"
           helperText="Used to discard unlikely text in the sampling process. Lower values will make text more predictable but can become repetitious. (Put this value on 1 to disable its effect)"
@@ -724,29 +775,17 @@ const GenSettings: Component<Props & { pane: boolean; format?: ThirdPartyFormat;
         <RangeInput
           fieldName="topA"
           label="Top A"
-          helperText="Increases the consistency of the output by removing unlikely tokens based on the highest token probability. (Put this value on 1 to disable its effect)"
+          helperText="Increases the consistency of the output by removing unlikely tokens based on the highest token probability. (Put this value on 0 to disable its effect)"
           min={0}
           max={1}
           step={0.01}
-          value={props.inherit?.topA ?? defaultPresets.basic.topA}
+          value={props.inherit?.topA ?? 0}
           disabled={props.disabled}
           service={props.service}
           format={props.format}
           aiSetting={'topA'}
         />
-        <RangeInput
-          fieldName="topG"
-          label="Top G"
-          helperText="Functions similarly to Top K, but acts on groups of tokens with equal probabilities (0 to disable)"
-          min={0}
-          max={20}
-          step={1}
-          value={props.inherit?.topG ?? 0}
-          disabled={props.disabled}
-          service={props.service}
-          format={props.format}
-          aiSetting={'topG'}
-        />
+
         <RangeInput
           fieldName="mirostatTau"
           label="Mirostat Tau"
@@ -923,7 +962,7 @@ const GenSettings: Component<Props & { pane: boolean; format?: ThirdPartyFormat;
         />
         <Toggle
           fieldName="doSample"
-          label="Do Sample"
+          label="DO Sample"
           helperText="If doing contrastive search, disable this."
           value={props.inherit?.doSample ?? true}
           disabled={props.disabled}
@@ -1132,9 +1171,10 @@ export function getPresetFormData(ref: any) {
   } = getStrictForm(ref, {
     ...presetValidator,
     thirdPartyFormat: [...THIRDPARTY_FORMATS, ''],
-    useAdvancedPrompt: 'boolean?',
+    useAdvancedPrompt: 'string?',
     promptOrderFormat: 'string?',
     promptOrder: 'string?',
+    promptTemplateId: 'string?',
   })
 
   const registered = getRegisteredSettings(data.service as AIAdapter, ref)
