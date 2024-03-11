@@ -52,11 +52,14 @@ export const THIRDPARTY_HANDLERS: { [svc in ThirdPartyFormat]: AIAdapter } = {
   openai: 'openai',
   'openai-chat': 'openai',
   claude: 'claude',
+  aphrodite: 'kobold',
   exllamav2: 'kobold',
   kobold: 'kobold',
   koboldcpp: 'kobold',
   llamacpp: 'ooba',
   ooba: 'ooba',
+  tabby: 'kobold',
+  mistral: 'kobold',
 }
 
 export const THIRDPARTY_FORMATS = [
@@ -66,8 +69,11 @@ export const THIRDPARTY_FORMATS = [
   'claude',
   'ooba',
   'llamacpp',
+  'aphrodite',
   'exllamav2',
   'koboldcpp',
+  'tabby',
+  'mistral',
 ] as const
 
 export const AI_ADAPTERS = [
@@ -90,6 +96,8 @@ export const CHAT_ADAPTERS = ['default', ...AI_ADAPTERS] as const
 export const MULTI_TENANT_ADAPTERS = ['novel', 'chai', 'kobold'] as const
 
 export type NovelModel = keyof typeof NOVEL_MODELS
+
+export type MistralModel = keyof typeof MISTRAL_MODELS
 
 export type OpenAIModel = (typeof OPENAI_MODELS)[keyof typeof OPENAI_MODELS]
 
@@ -125,6 +133,16 @@ export const OPENAI_MODELS = {
   GPT4_32k_0314: 'gpt-4-32k-0314',
   GPT4_32k_0613: 'gpt-4-32k-0613',
   GPT45_1106: 'gpt-4-1106-preview',
+  GPT45_0125: 'gpt-4-0125-preview',
+  GPT45_Preview: 'gpt-4-turbo-preview', // latest GPT 4 Turbo
+} as const
+
+export const MISTRAL_MODELS = {
+  OpenMistral7b: 'open-mistral-7b',
+  OpenMixtral8x7b: 'open-mixtral-8x7b',
+  MistralSmall: 'mistral-small-latest',
+  MistralMedium: 'mistral-medium-latest',
+  MistralLarge: 'mistral-large-latest',
 } as const
 
 export const OPENAI_CHAT_MODELS: Record<string, boolean> = {
@@ -140,6 +158,8 @@ export const OPENAI_CHAT_MODELS: Record<string, boolean> = {
   [OPENAI_MODELS.GPT4_32k_0314]: true,
   [OPENAI_MODELS.GPT4_32k_0613]: true,
   [OPENAI_MODELS.GPT45_1106]: true,
+  [OPENAI_MODELS.GPT45_0125]: true,
+  [OPENAI_MODELS.GPT45_Preview]: true,
 }
 
 /** Note: claude-v1 and claude-instant-v1 not included as they may point
@@ -150,6 +170,8 @@ export const OPENAI_CHAT_MODELS: Record<string, boolean> = {
 export const CLAUDE_MODELS = {
   ClaudeV1: 'claude-v1',
   ClaudeV2: 'claude-2',
+  ClaudeV2_0: 'claude-2.0',
+  ClaudeV2_1: 'claude-2.1',
   ClaudeV1_100k: 'claude-v1-100k',
   ClaudeV1_0: 'claude-v1.0',
   ClaudeV1_2: 'claude-v1.2',
@@ -160,7 +182,14 @@ export const CLAUDE_MODELS = {
   ClaudeInstantV1_0: 'claude-instant-v1.0',
   ClaudeInstantV1_1: 'claude-instant-v1.1',
   ClaudeInstantV1_1_100k: 'claude-instant-v1.1-100k',
+  ClaudeV3_Opus: 'claude-3-opus-20240229',
+  ClaudeV3_Sonnet: 'claude-3-sonnet-20240229',
 } as const
+
+export const CLAUDE_CHAT_MODELS: Record<string, boolean> = {
+  [CLAUDE_MODELS.ClaudeV3_Opus]: true,
+  [CLAUDE_MODELS.ClaudeV3_Sonnet]: true,
+}
 
 export const NOVEL_MODELS = {
   euterpe: 'euterpe-v2',
@@ -267,10 +296,31 @@ export type PresetAISettings = Omit<
 export const adapterSettings: {
   [key in keyof PresetAISettings]: Array<AIAdapter | ThirdPartyFormat>
 } = {
-  temp: ['kobold', 'novel', 'ooba', 'horde', 'openai', 'scale', 'claude', 'goose', 'agnaistic'],
+  temp: [
+    'kobold',
+    'novel',
+    'ooba',
+    'horde',
+    'openai',
+    'scale',
+    'claude',
+    'goose',
+    'agnaistic',
+    'aphrodite',
+    'tabby',
+    'mistral',
+  ],
+  dynatemp_range: ['kobold', 'aphrodite', 'ooba', 'tabby'],
+  dynatemp_exponent: ['kobold', 'aphrodite', 'ooba', 'tabby'],
+  smoothingFactor: ['kobold', 'aphrodite', 'ooba', 'tabby'],
   maxTokens: AI_ADAPTERS.slice(),
   maxContextLength: AI_ADAPTERS.slice(),
   antiBond: ['openai', 'scale'],
+  prefixNameAppend: ['openai', 'claude'],
+
+  swipesPerGeneration: ['aphrodite'],
+  epsilonCutoff: ['aphrodite'],
+  etaCutoff: ['aphrodite'],
 
   prefill: ['claude'],
 
@@ -284,38 +334,86 @@ export const adapterSettings: {
     'agnaistic',
     'exllamav2',
     'openai-chat',
+    'aphrodite',
+    'tabby',
+    'mistral',
   ],
-  repetitionPenalty: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic', 'exllamav2'],
-  repetitionPenaltyRange: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic'],
+  repetitionPenalty: [
+    'horde',
+    'novel',
+    'kobold',
+    'ooba',
+    'agnaistic',
+    'exllamav2',
+    'aphrodite',
+    'tabby',
+  ],
+  repetitionPenaltyRange: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic', 'tabby'],
   repetitionPenaltySlope: ['horde', 'novel', 'kobold'],
-  tailFreeSampling: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic'],
-  minP: ['llamacpp', 'kobold', 'koboldcpp', 'exllamav2', 'ooba', 'agnaistic'],
-  topA: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic'],
-  topK: ['horde', 'novel', 'kobold', 'ooba', 'claude', 'agnaistic', 'exllamav2'],
-  typicalP: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic', 'exllamav2'],
+  tailFreeSampling: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic', 'aphrodite', 'tabby'],
+  minP: ['llamacpp', 'kobold', 'koboldcpp', 'exllamav2', 'ooba', 'agnaistic', 'aphrodite', 'tabby'],
+  topA: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic', 'aphrodite', 'tabby'],
+  topK: [
+    'horde',
+    'novel',
+    'kobold',
+    'ooba',
+    'claude',
+    'agnaistic',
+    'exllamav2',
+    'aphrodite',
+    'tabby',
+  ],
+  typicalP: ['horde', 'novel', 'kobold', 'ooba', 'agnaistic', 'exllamav2', 'aphrodite', 'tabby'],
 
-  mirostatLR: ['novel', 'ooba', 'agnaistic', 'llamacpp'],
-  mirostatTau: ['novel', 'ooba', 'agnaistic', 'llamacpp'],
-  cfgScale: ['novel', 'ooba'],
-  cfgOppose: ['novel', 'ooba'],
+  mirostatToggle: ['aphrodite', 'tabby'],
+  mirostatLR: ['novel', 'ooba', 'agnaistic', 'llamacpp', 'aphrodite', 'tabby'],
+  mirostatTau: ['novel', 'ooba', 'agnaistic', 'llamacpp', 'aphrodite', 'tabby'],
+  cfgScale: ['novel', 'ooba', 'tabby'],
+  cfgOppose: ['novel', 'ooba', 'tabby'],
   phraseRepPenalty: ['novel'],
   phraseBias: ['novel'],
 
   thirdPartyUrl: ['kobold', 'ooba'],
   thirdPartyFormat: ['kobold'],
-  thirdPartyModel: ['openai', 'openai-chat'],
+  thirdPartyModel: ['openai', 'openai-chat', 'aphrodite', 'tabby'],
+  thirdPartyKey: ['kobold', 'aphrodite', 'tabby', 'openai', 'openai-chat'],
+
   claudeModel: ['claude'],
   novelModel: ['novel'],
+  mistralModel: ['mistral'],
   oaiModel: ['openai', 'openai-chat'],
-  frequencyPenalty: ['openai', 'kobold', 'novel', 'agnaistic', 'openai-chat'],
-  presencePenalty: ['openai', 'kobold', 'novel', 'openai-chat'],
-  streamResponse: ['openai', 'kobold', 'novel', 'claude', 'ooba', 'agnaistic', 'openai-chat'],
+  frequencyPenalty: ['openai', 'kobold', 'novel', 'agnaistic', 'openai-chat', 'aphrodite', 'tabby'],
+  presencePenalty: ['openai', 'kobold', 'novel', 'openai-chat', 'aphrodite', 'tabby'],
+  streamResponse: [
+    'openai',
+    'kobold',
+    'novel',
+    'claude',
+    'ooba',
+    'agnaistic',
+    'openai-chat',
+    'aphrodite',
+    'tabby',
+    'mistral',
+  ],
   openRouterModel: ['openrouter'],
-  stopSequences: ['ooba', 'agnaistic', 'novel', 'mancer', 'llamacpp', 'horde', 'exllamav2', 'kobold'],
+  stopSequences: [
+    'ooba',
+    'agnaistic',
+    'novel',
+    'mancer',
+    'llamacpp',
+    'horde',
+    'exllamav2',
+    'kobold',
+    'aphrodite',
+    'tabby',
+  ],
   trimStop: ['koboldcpp'],
 
-  addBosToken: ['ooba', 'agnaistic'],
-  banEosToken: ['ooba', 'agnaistic'],
+  addBosToken: ['ooba', 'agnaistic', 'tabby'],
+  banEosToken: ['ooba', 'agnaistic', 'aphrodite', 'tabby'],
   doSample: ['ooba', 'agnaistic'],
   encoderRepitionPenalty: ['ooba'],
   penaltyAlpha: ['ooba'],
@@ -338,6 +436,9 @@ export type RegisteredAdapter = {
 
 export const settingLabels: { [key in keyof PresetAISettings]: string } = {
   temp: 'Temperature',
+  dynatemp_range: 'Dynamic Temperature Range',
+  dynatemp_exponent: 'Dynamic Temperature Exponent',
+  smoothingFactor: 'Smoothing Factor (Quadratic Sampling)',
   maxTokens: 'Max Tokens (Response length)',
   repetitionPenalty: 'Repetition Penalty',
   repetitionPenaltyRange: 'Repetition Penality Range',
@@ -384,6 +485,10 @@ export const settingLabels: { [key in keyof PresetAISettings]: string } = {
   trimStop: 'Trim Stop Sequences',
   mirostatTau: 'Mirostat Tau',
   mirostatLR: 'Mirostat LR',
+  swipesPerGeneration: 'Swipes Per Generation',
+  mirostatToggle: 'Mirostat Toggle',
+  etaCutoff: 'ETA Cutoff',
+  epsilonCutoff: 'Epsilon Cutoff',
 }
 
 export const samplerOrders: { [key in AIAdapter]?: Array<keyof PresetAISettings> } = {

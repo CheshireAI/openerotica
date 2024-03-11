@@ -1,41 +1,24 @@
 import { Component, For, Match, Show, Switch, createMemo, createSignal, onMount } from 'solid-js'
-import { userStore } from '/web/store'
+import { settingStore, userStore } from '/web/store'
 import { AppSchema } from '/common/types'
 import { Pill, SolidCard } from '/web/shared/Card'
 import Button from '/web/shared/Button'
 import { TierCard } from './TierCard'
 import { ConfirmModal } from '/web/shared/Modal'
 import { PatreonControls } from '../Settings/PatreonOauth'
+import { getUserSubscriptionTier } from '/common/util'
 
 export const SubscriptionPage: Component = (props) => {
+  const settings = settingStore((s) => s.config)
   const user = userStore()
   const cfg = userStore((s) => {
-    const nativeLevel = s.user?.sub?.level ?? -1
-    const patronLevel = s.user?.patreon?.sub?.level ?? -1
-
-    const patronTier = s.tiers.find((t) => t._id === s.user?.patreon?.sub?.tierId)
-    const nativeTier = s.tiers.find((t) => t._id === s.user?.sub?.tierId)
-
-    const type =
-      patronTier && nativeTier
-        ? patronLevel > nativeLevel
-          ? 'patreon'
-          : 'native'
-        : !!patronTier
-        ? 'patreon'
-        : !!nativeTier
-        ? 'native'
-        : 'none'
+    const tier = s.user ? getUserSubscriptionTier(s.user, s.tiers) : null
 
     return {
+      type: tier?.type ?? 'none',
+      tier: tier?.tier,
+      level: tier?.level ?? -1,
       tiers: s.tiers.sort((l, r) => r.level - l.level),
-      type: type as 'patreon' | 'native' | 'none',
-      tier: type === 'patreon' ? patronTier : type === 'native' ? nativeTier : undefined,
-      level: type === 'patreon' ? patronLevel : type === 'native' ? nativeLevel : -1,
-      // For testing Patreon logic
-      // type: 'patreon',
-      // tier: patronTier,
-      // level: patronLevel,
       downgrade: s.subStatus?.downgrading?.tierId,
     }
   })
@@ -45,7 +28,7 @@ export const SubscriptionPage: Component = (props) => {
   const [showDowngrade, setDowngrade] = createSignal<AppSchema.SubscriptionTier>()
 
   const hasExpired = createMemo(() => {
-    if (cfg.type === 'patreon') return false
+    if (cfg.type === 'patreon' || cfg.type === 'manual') return false
     // if (!user.user?.billing?.cancelling) return false
     if (!user.user?.billing) return true
     const threshold = new Date(user.user.billing.validUntil)
@@ -65,6 +48,10 @@ export const SubscriptionPage: Component = (props) => {
   })
 
   const renews = createMemo(() => {
+    if (cfg.type === 'manual') {
+      const last = new Date(user.user?.manualSub?.expiresAt!)
+      return last.toLocaleDateString()
+    }
     if (!user.user?.billing) return ''
     if (cfg.type === 'patreon') return ''
     const last = new Date(user.user.billing.validUntil)
@@ -76,6 +63,7 @@ export const SubscriptionPage: Component = (props) => {
   }
 
   const currentText = createMemo(() => {
+    if (cfg.type === 'manaul') return 'Valid until'
     if (cfg.type === 'patreon') return `Patreon Subscriber`
 
     if (user.user?.billing?.status === 'active') {
@@ -115,6 +103,15 @@ export const SubscriptionPage: Component = (props) => {
             <p>Subscribing allows me to spend more time developing and enhancing Agnaistic.</p>
           </SolidCard>
 
+          <Show when={settings.serverConfig?.supportEmail}>
+            <SolidCard>
+              If you require billing or subscription support contact{' '}
+              <a class="link" href={`mailto:${settings.serverConfig?.supportEmail}`}>
+                {settings.serverConfig?.supportEmail}
+              </a>
+            </SolidCard>
+          </Show>
+
           <PatreonControls />
 
           <Show when={cfg.tier && !hasExpired()}>
@@ -126,7 +123,13 @@ export const SubscriptionPage: Component = (props) => {
                 </div>
                 <Pill type="green">
                   Subscribed via{' '}
-                  {cfg.type === 'patreon' ? 'Patreon' : cfg.type === 'native' ? 'Stripe' : 'None'}
+                  {cfg.type === 'manual'
+                    ? 'Gift'
+                    : cfg.type === 'patreon'
+                    ? 'Patreon'
+                    : cfg.type === 'native'
+                    ? 'Stripe'
+                    : 'None'}
                 </Pill>
                 <Switch>
                   <Match when={cfg.downgrade && cfg.tier!._id !== cfg.downgrade}>
@@ -149,6 +152,14 @@ export const SubscriptionPage: Component = (props) => {
                       Resume Subscription
                     </Button>
                   </Match>
+                  <Match when={cfg.type === 'manual'}>
+                    <SolidCard
+                      bg="bg-700"
+                      class="flex w-1/2 justify-center text-lg font-bold text-[var(--green-600)]"
+                    >
+                      Enjoy!
+                    </SolidCard>
+                  </Match>
                   <Match when>
                     <SolidCard
                       bg="bg-700"
@@ -170,6 +181,9 @@ export const SubscriptionPage: Component = (props) => {
               {(each) => (
                 <>
                   <TierCard tier={each} class="sm:w-1/3">
+                    <Show when={user.user?.manualSub?.tierId === each._id}>
+                      <Pill type="green">This tier is currently gifted to you</Pill>
+                    </Show>
                     <div class="mt-4 flex justify-center">
                       <Switch>
                         <Match when={cfg.tier && cfg.level < each.level}>

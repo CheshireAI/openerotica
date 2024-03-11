@@ -23,6 +23,8 @@ export const updateChat = handle(async ({ params, body, user, userId }) => {
       scenarioStates: ['string?'],
       systemPrompt: 'string?',
       postHistoryInstructions: 'string?',
+      imageSource: 'string?',
+      imageSettings: 'any?',
     },
     body,
     true
@@ -49,6 +51,8 @@ export const updateChat = handle(async ({ params, body, user, userId }) => {
     userEmbedId: body.userEmbedId ?? prev.userEmbedId,
     scenarioIds: body.scenarioIds ?? prev.scenarioIds,
     scenarioStates: body.scenarioStates ?? prev.scenarioStates,
+    imageSource: (body.imageSource as any) ?? prev.imageSource,
+    imageSettings: body.imageSettings,
   }
 
   if (body.useOverrides === false) {
@@ -94,8 +98,11 @@ export const updateMessage = handle(async ({ body, params, userId }) => {
   return message
 })
 
-export const updateMessageProps = handle(async ({ body, params, userId }) => {
-  assertValid({ imagePrompt: 'string?', msg: 'string?', extras: ['string?'] }, body)
+export const swapMessage = handle(async ({ body, params, userId }) => {
+  assertValid(
+    { imagePrompt: 'string?', msg: 'string?', extras: ['string?'], retries: ['string?'] },
+    body
+  )
 
   const prev = await store.chats.getMessageAndChat(params.id)
 
@@ -105,6 +112,41 @@ export const updateMessageProps = handle(async ({ body, params, userId }) => {
   const update: Partial<AppSchema.ChatMessage> = {
     imagePrompt: body.imagePrompt || prev.msg.imagePrompt,
     msg: body.msg ?? prev.msg.msg,
+    retries: body.retries,
+    extras: body.extras || prev.msg.extras,
+  }
+
+  const message = await store.msgs.editMessage(params.id, {
+    ...update,
+    state: body.msg === undefined ? prev.msg.state : 'swapped',
+  })
+
+  sendMany(prev.chat?.memberIds.concat(prev.chat.userId), {
+    type: 'message-swapped',
+    messageId: params.id,
+    imagePrompt: body.imagePrompt || prev.msg.imagePrompt,
+    message: body.msg || prev.msg.msg,
+    extras: body.extras || prev.msg.extras,
+  })
+
+  return message
+})
+
+export const updateMessageProps = handle(async ({ body, params, userId }) => {
+  assertValid(
+    { imagePrompt: 'string?', msg: 'string?', extras: ['string?'], retries: ['string?'] },
+    body
+  )
+
+  const prev = await store.chats.getMessageAndChat(params.id)
+
+  if (!prev || !prev.chat) throw errors.NotFound
+  if (prev.chat?.userId !== userId) throw errors.Forbidden
+
+  const update: Partial<AppSchema.ChatMessage> = {
+    imagePrompt: body.imagePrompt || prev.msg.imagePrompt,
+    msg: body.msg ?? prev.msg.msg,
+    retries: body.retries,
     extras: body.extras || prev.msg.extras,
   }
 

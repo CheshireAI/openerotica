@@ -25,8 +25,7 @@ import ChatDetail from './pages/Chat/ChatDetail'
 import ChangeLog from './pages/Home/ChangeLog'
 import Settings from './pages/Settings'
 import ProfilePage, { ProfileModal } from './pages/Profile'
-import { chatStore } from './store'
-import { usePane } from './shared/hooks'
+import { usePaneManager } from './shared/hooks'
 import { rootModalStore } from './store/root-modal'
 import { For } from 'solid-js'
 import { css, getMaxChatWidth } from './shared/util'
@@ -42,6 +41,8 @@ import { CheckoutCancel, CheckoutSuccess } from './pages/Profile/Checkout'
 import { markdown } from './shared/markdown'
 import SoundsPage from './pages/Sounds'
 import PatreonOauth from './pages/Settings/PatreonOauth'
+import { SagaDetail } from './pages/Saga/Detail'
+import { SagaList } from './pages/Saga/List'
 
 const App: Component = () => {
   const state = userStore()
@@ -61,6 +62,10 @@ const App: Component = () => {
           <Route path="/chats/create/:id?" component={CreateChatForm} />
           <Route path="/chats" component={CharacterChats} />
           <Route path="/chat" component={ChatDetail} />
+          <Show when={cfg.config.guidanceAccess || state.user?.admin}>
+            <Route path="/saga" component={SagaList} />
+            <Route path="/saga/:id" component={SagaDetail} />
+          </Show>
           <Route path="/chat/:id" component={ChatDetail} />
           <Route path={['/info', '/']} component={HomePage} />
           <Route path="/changelog" component={ChangeLog} />
@@ -145,12 +150,10 @@ const Layout: Component = () => {
   const state = userStore()
   const cfg = settingStore()
   const location = useLocation()
-  const chat = chatStore()
-  const paneOrPopup = usePane()
-  const isPaneOpen = createMemo(() => paneOrPopup() === 'pane' && !!chat.opts.pane)
+  const pane = usePaneManager()
 
   const maxW = createMemo((): string => {
-    if (isPaneOpen()) return 'max-w-full'
+    if (pane.showing()) return 'max-w-full'
 
     return getMaxChatWidth(state.ui.chatWidth)
   })
@@ -165,7 +168,7 @@ const Layout: Component = () => {
   })
 
   const isChat = createMemo(() => {
-    return location.pathname.startsWith('/chat/')
+    return location.pathname.startsWith('/chat/') || location.pathname.startsWith('/saga/')
   })
 
   const bg = createMemo(() => {

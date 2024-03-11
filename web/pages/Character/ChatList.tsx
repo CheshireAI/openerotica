@@ -52,6 +52,7 @@ const CharacterChats: Component = () => {
       updatedAt: chat.updatedAt,
       characterId: chat.characterId,
       characters: toChatListState(s.allChars.map, chat),
+      messageCount: chat.messageCount,
     })),
     chars: s.allChars.map,
   }))
@@ -286,6 +287,7 @@ const Chats: Component<{
                                     char={props.allChars[ch._id]}
                                     surround
                                     zoom={1.75}
+                                    format={{ size: 'md', corners: 'circle' }}
                                   />
                                 </div>
                               )
@@ -304,6 +306,9 @@ const Chats: Component<{
                           </Show>
                           <span class="flex text-xs italic text-[var(--text-600)]">
                             {toDuration(new Date(chat.updatedAt))} ago
+                            <Show when={chat.messageCount !== undefined}>
+                              &nbsp;({chat.messageCount})
+                            </Show>
                           </span>
                         </div>
                       </div>

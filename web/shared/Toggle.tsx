@@ -10,6 +10,7 @@ export const Toggle: Component<{
   value?: boolean
   label?: string | JSX.Element
   helperText?: string | JSX.Element
+  helperMarkdown?: string
   class?: string
   onChange?: (value: boolean) => void
   disabled?: boolean
@@ -17,10 +18,14 @@ export const Toggle: Component<{
   service?: AIAdapter
   format?: ThirdPartyFormat
   aiSetting?: keyof PresetAISettings
+  classList?: Record<string, boolean>
 }> = (props) => {
+  let ref: HTMLInputElement
   const onChange = (ev: Event & { currentTarget: HTMLInputElement }) => {
     if (props.disabled) return
-    props.onChange?.(ev.currentTarget.checked)
+    const checked = !!ev.currentTarget.checked
+    ref.checked = checked
+    props.onChange?.(checked)
   }
 
   const hide = createMemo(() => {
@@ -31,14 +36,22 @@ export const Toggle: Component<{
   const justify = createMemo(() => (props.reverse ? 'sm:justify-start' : 'sm:justify-between'))
 
   return (
-    <div class={`sm: flex flex-col gap-2 sm:flex-row ${hide()} sm:items-center ${justify()}`}>
+    <div
+      class={`sm: flex flex-col gap-2 sm:flex-row ${hide()} sm:items-center ${justify()}`}
+      classList={props.classList}
+    >
       <Show when={props.label && !props.reverse}>
-        <FormLabel label={props.label} helperText={props.helperText} />
+        <FormLabel
+          label={props.label}
+          helperText={props.helperText}
+          helperMarkdown={props.helperMarkdown}
+        />
       </Show>
       <label class={`toggle ${props.disabled ? 'toggle-disabled' : ''}`}>
         <input
+          ref={ref!}
           type="checkbox"
-          class="toggle-checkbox w-0"
+          class="toggle-checkbox form-field w-0"
           id={props.fieldName}
           name={props.fieldName}
           checked={props.value}

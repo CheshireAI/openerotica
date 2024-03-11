@@ -60,7 +60,11 @@ export type UserState = {
       activeAt: string
     }
   }
-  sub?: { level: number; type: 'native' | 'patreon'; tier: AppSchema.SubscriptionTier }
+  sub?: {
+    level: number
+    type: AppSchema.SubscriptionType
+    tier: AppSchema.SubscriptionTier
+  }
 }
 
 export const userStore = createStore<UserState>(
@@ -222,14 +226,15 @@ export const userStore = createStore<UserState>(
       }
     },
 
-    async *validateSubscription({ billingLoading }, quiet?: boolean) {
+    async *validateSubscription({ billingLoading, tiers, sub: previous }, quiet?: boolean) {
       if (billingLoading) return
       yield { billingLoading: true }
       const res = await api.post('/admin/billing/subscribe/verify')
       yield { billingLoading: false }
 
       if (res.result) {
-        yield { user: res.result }
+        const next = getUserSubscriptionTier(res.result, tiers, previous)
+        yield { user: res.result, sub: next }
       }
 
       if (quiet) return
@@ -353,7 +358,7 @@ export const userStore = createStore<UserState>(
       }
     },
 
-    async *syncPatreonAccount(_, quiet?: boolean) {
+    async *syncPatreonAccount({ sub: previous, tiers }, quiet?: boolean) {
       const res = await api.post('/user/resync/patreon')
 
       if (res.result) {
@@ -364,7 +369,8 @@ export const userStore = createStore<UserState>(
 
       if (res.result) {
         toastStore.success('Successfully updated Patreon information')
-        return { user: res.result }
+        const sub = getUserSubscriptionTier(res.result, tiers, previous)
+        return { user: res.result, sub }
       }
 
       if (res.error) {
@@ -526,7 +532,15 @@ export const userStore = createStore<UserState>(
 
     async deleteKey(
       { user },
-      kind: 'novel' | 'horde' | 'openai' | 'scale' | 'claude' | 'third-party' | 'elevenlabs'
+      kind:
+        | 'novel'
+        | 'horde'
+        | 'openai'
+        | 'scale'
+        | 'claude'
+        | 'third-party'
+        | 'elevenlabs'
+        | 'mistral'
     ) {
       const res = await usersApi.deleteApiKey(kind)
       if (res.error) return toastStore.error(`Failed to update settings: ${res.error}`)
@@ -555,6 +569,10 @@ export const userStore = createStore<UserState>(
 
       if (kind === 'openai') {
         return { user: { ...user, oaiKey: '', oaiKeySet: false } }
+      }
+
+      if (kind === 'mistral') {
+        return { user: { ...user, mistralKey: '', mistralKeySet: false } }
       }
     },
 

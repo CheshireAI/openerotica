@@ -1,13 +1,12 @@
-import needle from 'needle'
 import { sanitiseAndTrim } from '../api/chat/common'
 import { ModelAdapter } from './type'
-import { decryptText } from '../db/util'
 import { defaultPresets } from '../../common/presets'
 import { OPENAI_CHAT_MODELS } from '../../common/adapters'
 import { AppSchema } from '../../common/types/schema'
 import { config } from '../config'
 import { AppLog } from '../logger'
-import { streamCompletion, toChatCompletionPayload } from './chat-completion'
+import { requestFullCompletion, streamCompletion, toChatCompletionPayload } from './chat-completion'
+import { decryptText } from '../db/util'
 
 const baseUrl = `https://api.openai.com`
 
@@ -26,40 +25,30 @@ type Completion<T = Inference> = {
   error?: { message: string }
 }
 
-type CompletionGenerator = (
-  userId: string,
-  url: string,
-  headers: Record<string, string | string[] | number>,
-  body: any,
-  log: AppLog
-) => AsyncGenerator<
-  { error: string } | { error?: undefined; token: string },
-  Completion | undefined
->
-
 export const handleOAI: ModelAdapter = async function* (opts) {
-  const { char, members, user, prompt, log, guest, gen, kind, isThirdParty } = opts
+  const { char, members, user, prompt, log, gen, guest, kind, isThirdParty } = opts
   const base = getBaseUrl(user, !!gen.thirdPartyUrlNoSuffix, isThirdParty)
   const handle = opts.impersonate?.name || opts.sender?.handle || 'You'
   if (!user.oaiKey && !base.changed) {
     yield { error: `OpenAI request failed: No OpenAI API key not set. Check your settings.` }
     return
   }
+
   const oaiModel = gen.thirdPartyModel || gen.oaiModel || defaultPresets.openai.oaiModel
 
-  const maxResponseLength =
-    opts.chat.mode === 'adventure' ? 400 : gen.maxTokens ?? defaultPresets.openai.maxTokens
+  const maxResponseLength = gen.maxTokens ?? defaultPresets.openai.maxTokens
 
   const body: any = {
     model: oaiModel,
     stream: (gen.streamResponse && kind !== 'summary') ?? defaultPresets.openai.streamResponse,
     temperature: gen.temp ?? defaultPresets.openai.temp,
     max_tokens: maxResponseLength,
-    presence_penalty: gen.presencePenalty ?? defaultPresets.openai.presencePenalty,
-    frequency_penalty: gen.frequencyPenalty ?? defaultPresets.openai.frequencyPenalty,
     top_p: gen.topP ?? 1,
-    stop: `\n${handle}:`,
+    stop: [`\n${handle}:`].concat(gen.stopSequences!),
   }
+
+  body.presence_penalty = gen.presencePenalty ?? defaultPresets.openai.presencePenalty
+  body.frequency_penalty = gen.frequencyPenalty ?? defaultPresets.openai.frequencyPenalty
 
   const useChat =
     (isThirdParty && gen.thirdPartyFormat === 'openai-chat') || !!OPENAI_CHAT_MODELS[oaiModel]
@@ -80,7 +69,7 @@ export const handleOAI: ModelAdapter = async function* (opts) {
 
   const useThirdPartyPassword = base.changed && isThirdParty && user.thirdPartyPassword
   const apiKey = useThirdPartyPassword
-    ? user.thirdPartyPassword
+    ? gen.thirdPartyKey || user.thirdPartyPassword
     : !isThirdParty
     ? user.oaiKey
     : null
@@ -104,7 +93,7 @@ export const handleOAI: ModelAdapter = async function* (opts) {
 
   const iter = body.stream
     ? streamCompletion(opts.user._id, url, headers, body, 'OpenAI', opts.log)
-    : requestFullCompletion(opts.user._id, url, headers, body, opts.log)
+    : requestFullCompletion(opts.user._id, url, headers, body, 'OpenAI', opts.log)
   let accumulated = ''
   let response: Completion<Inference> | undefined
 
@@ -118,7 +107,7 @@ export const handleOAI: ModelAdapter = async function* (opts) {
     }
 
     if (generated.value.error) {
-      yield generated.value
+      yield { error: generated.value.error }
       return
     }
 
@@ -142,7 +131,9 @@ export const handleOAI: ModelAdapter = async function* (opts) {
       return
     }
 
-    yield sanitiseAndTrim(text, prompt, opts.replyAs, opts.characters, members)
+    gen.swipesPerGeneration! > 1
+      ? yield sanitiseAndTrim(accumulated, prompt, char, opts.characters, members)
+      : yield sanitiseAndTrim(text, prompt, opts.replyAs, opts.characters, members)
   } catch (ex: any) {
     log.error({ err: ex }, 'OpenAI failed to parse')
     yield { error: `OpenAI request failed: ${ex.message}` }
@@ -167,33 +158,6 @@ export type OAIUsage = {
   daily_costs: Array<{ timestamp: number; line_item: Array<{ name: string; cost: number }> }>
   object: string
   total_usage: number
-}
-
-const requestFullCompletion: CompletionGenerator = async function* (
-  _userId,
-  url,
-  headers,
-  body,
-  _log
-) {
-  const resp = await needle('post', url, JSON.stringify(body), {
-    json: true,
-    headers,
-  }).catch((err) => ({ error: err }))
-
-  if ('error' in resp) {
-    yield { error: `OpenAI request failed: ${resp.error?.message || resp.error}` }
-    return
-  }
-
-  if (resp.statusCode && resp.statusCode >= 400) {
-    const msg =
-      resp.body?.error?.message || resp.body.message || resp.statusMessage || 'Unknown error'
-
-    yield { error: `OpenAI request failed (${resp.statusCode}): ${msg}` }
-    return
-  }
-  return resp.body
 }
 
 function getCompletionContent(completion: Completion<Inference> | undefined, log: AppLog) {

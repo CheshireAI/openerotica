@@ -178,7 +178,10 @@ const InputBar: Component<{
   }
 
   const triggerEvent = () => {
-    eventStore.triggerEvent(props.chat, props.botMap[chats.replyAs!])
+    const char =
+      chats.replyAs && chats.replyAs in props.botMap ? props.botMap[chats.replyAs] : undefined
+
+    eventStore.triggerEvent(props.chat, char)
     setMenu(false)
   }
 
@@ -195,12 +198,6 @@ const InputBar: Component<{
     disposeSaveDraftDebounce()
   })
 
-  const genActions = () => {
-    msgStore.generateActions()
-    toastStore.normal('Generating...')
-    setMenu(false)
-  }
-
   const onFile = async (files: FileInputResult[]) => {
     const [file] = files
     if (!file) return
@@ -212,7 +209,7 @@ const InputBar: Component<{
   }
 
   return (
-    <div class="relative flex items-center justify-center">
+    <div class="relative flex items-end justify-center">
       <Show when={props.showOocToggle}>
         <div class="cursor-pointer p-2" onClick={toggleOoc}>
           <Show when={!props.ooc}>
@@ -224,7 +221,7 @@ const InputBar: Component<{
         </div>
       </Show>
 
-      <div class="flex items-center">
+      <div class="flex items-center sm:hidden">
         <a
           href="#"
           role="button"
@@ -273,12 +270,9 @@ const InputBar: Component<{
         }}
         onInput={updateText}
       />
-      <button
-        onClick={onButtonClick}
-        class="h-full rounded-l-none rounded-r-md border-l border-[var(--bg-700)] bg-[var(--bg-800)] px-2 py-2 hover:bg-[var(--bg-700)]"
-      >
-        <MoreHorizontal />
-      </button>
+      <Button schema="clear" onClick={onButtonClick} class="h-full px-2 py-2">
+        <MoreHorizontal class="icon-button" />
+      </Button>
 
       <DropMenu show={menu()} close={() => setMenu(false)} vert="up" horz="left">
         <div class="flex w-48 flex-col gap-2 p-2">
@@ -321,11 +315,6 @@ const InputBar: Component<{
               <Toggle fieldName="ooc" value={props.ooc} onChange={toggleOoc} />
             </Button>
           </Show>
-          <Show when={ctx.flags.actions}>
-            <Button schema="secondary" class="w-full" onClick={genActions} alignLeft>
-              Generate Actions
-            </Button>
-          </Show>
           <Button schema="secondary" class="w-full" onClick={createImage} alignLeft>
             <ImagePlus size={18} /> Generate Image
           </Button>
@@ -341,13 +330,7 @@ const InputBar: Component<{
                 <Megaphone size={18} /> Play Voice
               </Button>
             </Show>
-            <Show
-              when={
-                !!ctx.chat?.scenarioIds?.length &&
-                isOwner() &&
-                (chats.replyAs || ctx.activeBots.length === 1)
-              }
-            >
+            <Show when={!!ctx.chat?.scenarioIds?.length && isOwner()}>
               <Button schema="secondary" class="w-full" onClick={triggerEvent} alignLeft>
                 <Zap /> Trigger Event
               </Button>
@@ -367,7 +350,7 @@ const InputBar: Component<{
         </div>
       </DropMenu>
       <Switch>
-        <Match when={text() === '' || listening()}>
+        <Match when={user.user?.speechtotext && (text() === '' || listening())}>
           <SpeechRecognitionRecorder
             culture={props.char?.culture}
             onText={(value) => setText(value)}
@@ -378,8 +361,8 @@ const InputBar: Component<{
         </Match>
 
         <Match when>
-          <Button schema="clear">
-            <Send class="icon-button" size={18} onClick={send} />
+          <Button schema="clear" onClick={send}>
+            <Send class="icon-button" size={18} />
           </Button>
         </Match>
       </Switch>

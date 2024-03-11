@@ -4,7 +4,7 @@ import { EVENTS, events } from '../emitter'
 import { createStore } from './create'
 import { subscribe } from './socket'
 import { toastStore } from './toasts'
-import { charsApi, getImageData } from './data/chars'
+import { charsApi } from './data/chars'
 import { imageApi } from './data/image'
 import { getAssetUrl, storage, toMap } from '../shared/util'
 import { toCharacterMap } from '../pages/Character/util'
@@ -268,9 +268,15 @@ export const characterStore = createStore<CharacterState>(
       const res = await charsApi.setFavorite(characterId, favorite)
       if (res.error) return toastStore.error(`Failed to set favorite character`)
       if (res.result) {
+        const prev = list.find((ch) => ch._id === characterId)
+        if (!prev) return
+
+        const nextChar = { ...prev }
+        nextChar.favorite = favorite
+        events.emit('character-updated', nextChar, 'updated')
         return {
           characters: {
-            list: list.map((ch) => (ch._id === characterId ? { ...ch, favorite } : ch)),
+            list: list.map((ch) => (ch._id === characterId ? nextChar : ch)),
             map: replace(map, characterId, { favorite }),
             loaded,
           },
@@ -345,12 +351,14 @@ export const characterStore = createStore<CharacterState>(
         prompt = prompt.replace(/\n+/g, ', ').replace(/\s+/g, ' ')
         yield { generate: { image: null, loading: true, blob: null } }
         imageCallback = onDone
-        const res = await imageApi.generateImageWithPrompt(prompt, 'avatar', async (image) => {
-          const file = await dataURLtoFile(image)
-          const data = await getImageData(file)
-          onDone?.(null, file)
-          set({ generate: { image: data, loading: false, blob: file } })
-        })
+        const res = await imageApi.generateImageWithPrompt(
+          prompt,
+          'avatar',
+          async ({ image, file, data }) => {
+            onDone?.(null, file)
+            set({ generate: { image: data, loading: false, blob: file } })
+          }
+        )
         if (res.error) {
           onDone?.(res.error)
           yield { generate: { image: prev.image, loading: false, blob: prev.blob } }
@@ -380,16 +388,6 @@ subscribe('image-failed', { error: 'string' }, (body) => {
   characterStore.setState({ generate: { image: null, loading: false, blob: null } })
   toastStore.error(`Failed to generate avatar: ${body.error}`)
 })
-
-async function dataURLtoFile(base64: string) {
-  if (!base64.startsWith('data')) {
-    base64 = `data:image/png;base64,${base64}`
-  }
-
-  return fetch(base64)
-    .then((res) => res.blob())
-    .then((buf) => new File([buf], 'avatar.png', { type: 'image/png' }))
-}
 
 subscribe(
   'chat-character-added',

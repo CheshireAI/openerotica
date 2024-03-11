@@ -10,9 +10,10 @@ import { handleHorde } from './horde'
 import { handleKobold } from './kobold'
 import { handleMancer } from './mancer'
 import { handleNovel } from './novel'
-import { getTextgenCompletion, getThirdPartyPayload, handleOoba } from './ooba'
+import { getTextgenCompletion, handleOoba } from './ooba'
 import { handleOAI } from './openai'
 import { handleOpenRouter } from './openrouter'
+import { getThirdPartyPayload } from './payloads'
 import { handlePetals } from './petals'
 import { registerAdapter } from './register'
 import { handleReplicate } from './replicate'
@@ -32,7 +33,8 @@ export async function getSubscriptionPreset(
   if (!gen) return
   if (gen.service !== 'agnaistic') return
 
-  const level = user.admin ? 100 : store.users.getUserSubTier(user)?.level ?? -1
+  const tier = store.users.getUserSubTier(user)
+  const level = user.admin ? 100 : tier?.level ?? -1
   let error: string | undefined = undefined
   let warning: string | undefined = undefined
 
@@ -59,7 +61,7 @@ export async function getSubscriptionPreset(
     }
   }
 
-  return { level, preset, error, warning }
+  return { level, preset, error, warning, tier: tier?.tier }
 }
 
 export const handleAgnaistic: ModelAdapter = async function* (opts) {
@@ -230,6 +232,7 @@ export const handleAgnaistic: ModelAdapter = async function* (opts) {
   log.debug(`Prompt:\n${prompt}`)
 
   const params = [
+    `type=text`,
     `key=${key}`,
     `id=${opts.user._id}`,
     `model=${preset.subModel}`,

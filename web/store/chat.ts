@@ -49,6 +49,8 @@ export type ChatState = {
     screenshot: boolean
     hideOoc: boolean
     pane?: ChatRightPane
+    confirm: boolean
+    options: 'mobile' | 'main' | false
   }
   promptHistory: Record<string, any>
 }
@@ -60,6 +62,7 @@ export type ChatRightPane =
   | 'ui'
   | 'chat-settings'
   | 'memory'
+  | 'other'
 
 export type ImportChat = {
   name: string
@@ -101,6 +104,8 @@ const initState: ChatState = {
   /** Map of all profiles that have ever participated in the chat */
   memberIds: {},
   opts: {
+    options: false,
+    confirm: false,
     editing: false,
     screenshot: false,
     hideOoc: false,
@@ -123,6 +128,8 @@ export const chatStore = createStore<ChatState>('chat', {
   memberIds: {},
   opts: {
     ...getOptsCache(),
+    options: false,
+    confirm: false,
     modal: undefined,
     screenshot: false,
     pane: undefined,
@@ -157,10 +164,11 @@ export const chatStore = createStore<ChatState>('chat', {
 
   events.on(EVENTS.charUpdated, (char: AppSchema.Character, action: 'created' | 'updated') => {
     const { active, allChars } = get()
-    const list =
-      action === 'created'
-        ? allChars.list.concat(char)
-        : allChars.list.map((ch) => (ch._id === char._id ? char : ch))
+
+    const isCreated = allChars.list.every((ch) => ch._id !== char._id)
+    const list = isCreated
+      ? allChars.list.concat(char)
+      : allChars.list.map((ch) => (ch._id === char._id ? char : ch))
 
     const map = Object.assign({}, allChars.map, { [char._id]: char })
     if (active?.char?._id !== char._id) {
@@ -184,13 +192,8 @@ export const chatStore = createStore<ChatState>('chat', {
      * If a user accepts an invite to a chat, their profile has not been fetched and cached
      * To fix this, we'll lazy load them when they send a message and their profile isn't already present
      */
-    option<Prop extends keyof ChatState['opts']>(
-      prev: ChatState,
-      key: Prop,
-      value: ChatState['opts'][Prop]
-    ) {
-      const next = { ...prev.opts, [key]: value }
-      next[key] = value
+    option(prev: ChatState, opts: Partial<ChatState['opts']>) {
+      const next = { ...prev.opts, ...opts }
       saveOptsCache(next)
       return { opts: next }
     },
@@ -518,7 +521,7 @@ export const chatStore = createStore<ChatState>('chat', {
       await api.get(`/chat/${chatId}/summary`)
     },
 
-    async showPrompt({ active }, msg: AppSchema.ChatMessage) {
+    async computePrompt({ active }, msg: AppSchema.ChatMessage, shown: boolean) {
       if (!active) return
 
       const { msgs } = msgStore.getState()
@@ -549,7 +552,7 @@ export const chatStore = createStore<ChatState>('chat', {
         encoder
       )
 
-      return { prompt }
+      return { prompt: { ...prompt, shown } }
     },
 
     closePrompt() {

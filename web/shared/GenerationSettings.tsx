@@ -17,10 +17,11 @@ import {
   AdapterSetting,
   ThirdPartyFormat,
   THIRDPARTY_FORMATS,
+  MISTRAL_MODELS,
 } from '../../common/adapters'
 import Divider from './Divider'
 import { Toggle } from './Toggle'
-import { chatStore, presetStore, settingStore, userStore } from '../store'
+import { presetStore, settingStore, userStore } from '../store'
 import PromptEditor, { BasicPromptTemplate } from './PromptEditor'
 import { Card } from './Card'
 import { FormLabel } from './FormLabel'
@@ -41,10 +42,12 @@ import Accordian from './Accordian'
 import { ServiceOption } from '../pages/Settings/components/RegisteredSettings'
 import { getServiceTempConfig } from './adapter'
 import Tabs from './Tabs'
-import { useSearchParams } from '@solidjs/router'
+import { A, useSearchParams } from '@solidjs/router'
 import { PhraseBias, StoppingStrings } from './PhraseBias'
 import { AgnaisticSettings } from '../pages/Settings/Agnaistic'
-import { templates } from '/common/presets/templates'
+import { BUILTIN_FORMATS, templates } from '/common/presets/templates'
+import { usePaneManager } from './hooks'
+import { samplerServiceMap } from '/common/sampler-order'
 
 export { GenerationSettings as default }
 
@@ -57,9 +60,9 @@ type Props = {
 }
 
 const GenerationSettings: Component<Props & { onSave: () => void }> = (props) => {
-  const opts = chatStore((s) => s.opts)
   const userState = userStore()
   const [search, setSearch] = useSearchParams()
+  const pane = usePaneManager()
 
   const services = createMemo<Option[]>(() => {
     const list = getUsableServices().map((adp) => ({ value: adp, label: ADAPTER_LABELS[adp] }))
@@ -120,8 +123,11 @@ const GenerationSettings: Component<Props & { onSave: () => void }> = (props) =>
               { label: 'Claude', value: 'claude' },
               { label: 'Textgen (Ooba)', value: 'ooba' },
               { label: 'Llama.cpp', value: 'llamacpp' },
+              { label: 'Aphrodite', value: 'aphrodite' },
               { label: 'ExLlamaV2', value: 'exllamav2' },
               { label: 'KoboldCpp', value: 'koboldcpp' },
+              { label: 'TabbyAPI', value: 'tabby' },
+              { label: 'Mistral API', value: 'mistral' },
             ]}
             value={props.inherit?.thirdPartyFormat ?? userState.user?.thirdPartyFormat ?? ''}
             service={service()}
@@ -132,7 +138,7 @@ const GenerationSettings: Component<Props & { onSave: () => void }> = (props) =>
 
           <RegisteredSettings service={service()} inherit={props.inherit} />
         </Card>
-        <Show when={!!opts.pane}>
+        <Show when={pane.showing()}>
           <TempSettings service={props.inherit?.service} />
         </Show>
         <Tabs
@@ -148,7 +154,7 @@ const GenerationSettings: Component<Props & { onSave: () => void }> = (props) =>
           inherit={props.inherit}
           service={service()}
           format={format()}
-          pane={!!opts.pane}
+          pane={pane.showing()}
           setFormat={setFormat}
           tab={tabs[tab()]}
         />
@@ -157,7 +163,7 @@ const GenerationSettings: Component<Props & { onSave: () => void }> = (props) =>
           inherit={props.inherit}
           service={service()}
           format={format()}
-          pane={!!opts.pane}
+          pane={pane.showing()}
           tab={tabs[tab()]}
         />
         <GenSettings
@@ -165,7 +171,7 @@ const GenerationSettings: Component<Props & { onSave: () => void }> = (props) =>
           inherit={props.inherit}
           service={service()}
           format={format()}
-          pane={!!opts.pane}
+          pane={pane.showing()}
           tab={tabs[tab()]}
         />
       </div>
@@ -189,6 +195,7 @@ const GeneralSettings: Component<
     version: props.inherit?.replicateModelVersion,
   })
 
+  const [_, setSwipesPerGeneration] = createSignal(props.inherit?.swipesPerGeneration || 1)
   const [tokens, setTokens] = createSignal(props.inherit?.maxTokens || 150)
 
   const [context, setContext] = createSignal(
@@ -234,6 +241,32 @@ const GeneralSettings: Component<
     return base
   })
 
+  const CLAUDE_LABELS = {
+    ClaudeV2: 'Latest: Claude v2',
+    ClaudeV2_1: 'Claude v2.1',
+    ClaudeV2_0: 'Claude v2.0',
+    ClaudeV1_100k: 'Latest: Claude v1 100K',
+    ClaudeV1_3_100k: 'Claude v1.3 100K',
+    ClaudeV1: 'Latest: Claude v1',
+    ClaudeV1_3: 'Claude v1.3',
+    ClaudeV1_2: 'Claude v1.2',
+    ClaudeV1_0: 'Claude v1.0',
+    ClaudeInstantV1_100k: 'Latest: Claude Instant v1 100K',
+    ClaudeInstantV1_1_100k: 'Claude Instant v1.1 100K',
+    ClaudeInstantV1: 'Latest: Claude Instant v1',
+    ClaudeInstantV1_1: 'Claude Instant v1.1',
+    ClaudeInstantV1_0: 'Claude Instant v1.0',
+    ClaudeV3_Opus: 'Claude v3 Opus',
+    ClaudeV3_Sonnet: 'Claude v3 Sonnet',
+  } satisfies Record<keyof typeof CLAUDE_MODELS, string>
+
+  const claudeModels: () => Option<string>[] = createMemo(() => {
+    const models = new Map(Object.entries(CLAUDE_MODELS) as [keyof typeof CLAUDE_MODELS, string][])
+    const labels = Object.entries(CLAUDE_LABELS) as [keyof typeof CLAUDE_MODELS, string][]
+
+    return labels.map(([key, label]) => ({ label, value: models.get(key)! }))
+  })
+
   return (
     <div class="flex flex-col gap-2" classList={{ hidden: props.tab !== 'General' }}>
       <Show when={props.service === 'horde'}>
@@ -251,8 +284,21 @@ const GeneralSettings: Component<
           value={props.inherit?.thirdPartyUrl || ''}
           disabled={props.disabled}
           service={props.service}
+          format={props.format}
           aiSetting={'thirdPartyUrl'}
         />
+
+        <TextInput
+          fieldName="thirdPartyKey"
+          label="Third Party Password"
+          helperText="Never enter your official OpenAI, Claude, Mistral keys here."
+          value={''}
+          disabled={props.disabled}
+          service={props.service}
+          type="password"
+          aiSetting={'thirdPartyKey'}
+        />
+
         <div class="flex flex-wrap items-start gap-2">
           <Toggle
             fieldName="thirdPartyUrlNoSuffix"
@@ -275,7 +321,9 @@ const GeneralSettings: Component<
             'openRouterModel',
             'novelModel',
             'claudeModel',
-            'replicateModelName'
+            'mistralModel',
+            'replicateModelName',
+            'thirdPartyModel'
           )
         }
       >
@@ -291,10 +339,22 @@ const GeneralSettings: Component<
           aiSetting={'oaiModel'}
         />
 
+        <Select
+          fieldName="mistralModel"
+          label="Mistral Model"
+          items={modelsToItems(MISTRAL_MODELS)}
+          helperText="Which Mistral model to use"
+          value={props.inherit?.mistralModel ?? ''}
+          disabled={props.disabled}
+          service={props.service}
+          format={props.format}
+          aiSetting={'mistralModel'}
+        />
+
         <TextInput
           fieldName="thirdPartyModel"
-          label="OpenAI Model Override"
-          helperText="OpenAI Model Override (typically for 3rd party APIs)"
+          label="Model Override"
+          helperText="Model Override (typically for 3rd party APIs)"
           value={props.inherit?.thirdPartyModel ?? ''}
           disabled={props.disabled}
           service={props.service}
@@ -357,8 +417,8 @@ const GeneralSettings: Component<
         <Select
           fieldName="claudeModel"
           label="Claude Model"
-          items={modelsToItems(CLAUDE_MODELS)}
-          helperText="Which Claude model to use"
+          items={claudeModels()}
+          helperText="Which Claude model to use, models marked as 'Latest' will automatically switch when a new minor version is released."
           value={props.inherit?.claudeModel ?? defaultPresets.claude.claudeModel}
           disabled={props.disabled}
           service={props.service}
@@ -409,6 +469,24 @@ const GeneralSettings: Component<
       </Card>
 
       <Card class="flex flex-col gap-2">
+        <Show
+          when={
+            props.inherit?.service === 'kobold' && props.inherit.thirdPartyFormat === 'aphrodite'
+          }
+        >
+          <RangeInput
+            fieldName="swipesPerGeneration"
+            label="Swipes Per Generation"
+            helperText="Number of responses (in swipes) that aphrodite should generate."
+            min={1}
+            max={10}
+            step={1}
+            value={props.inherit?.swipesPerGeneration || 1}
+            disabled={props.disabled}
+            format={props.format}
+            onChange={(val) => setSwipesPerGeneration(val)}
+          />
+        </Show>
         <RangeInput
           fieldName="maxTokens"
           label="Max New Tokens"
@@ -433,7 +511,7 @@ const GeneralSettings: Component<
             </>
           }
           min={16}
-          max={props.service === 'claude' ? 100000 : 32000}
+          max={props.service === 'claude' ? 200000 : 32000}
           step={1}
           value={props.inherit?.maxContextLength || defaultPresets.basic.maxContextLength}
           disabled={props.disabled}
@@ -467,6 +545,8 @@ function modelsToItems(models: Record<string, string>): Option<string>[] {
   const pairs = Object.entries(models).map(([label, value]) => ({ label, value }))
   return pairs
 }
+
+const FORMATS = Object.keys(BUILTIN_FORMATS).map((label) => ({ label, value: label }))
 
 const PromptSettings: Component<
   Props & { pane: boolean; format?: ThirdPartyFormat; tab: string }
@@ -504,6 +584,15 @@ const PromptSettings: Component<
     <div class="flex flex-col gap-4">
       <div class="flex flex-col gap-2" classList={{ hidden: props.tab !== 'Prompt' }}>
         <Card class="flex flex-col gap-4">
+          <Select
+            fieldName="modelFormat"
+            label="Model Prompt Format"
+            helperMarkdown={`Which model's formatting to use if use "universal tags" in your prompt templates
+            (E.g. \`<user>...</user>, <bot>...</bot>\`)`}
+            items={FORMATS}
+            value={props.inherit?.modelFormat || 'Alpaca'}
+            hide={useAdvanced() === 'basic'}
+          />
           <Select
             fieldName="useAdvancedPrompt"
             label="Use Advanced Prompting"
@@ -562,6 +651,21 @@ const PromptSettings: Component<
             value={props.inherit?.ultimeJailbreak ?? ''}
             disabled={props.disabled}
             class="form-field focusable-field text-900 min-h-[8rem] w-full rounded-xl px-4 py-2 text-sm"
+          />
+          <Toggle
+            fieldName="prefixNameAppend"
+            label="Append name of replying character to very end of the prompt"
+            helperText={
+              <>
+                For Claude/OpenAI Chat Completion. Appends the name of replying character and a
+                colon to the UJB/prefill.
+              </>
+            }
+            value={props.inherit?.prefixNameAppend ?? true}
+            disabled={props.disabled}
+            service={props.service}
+            format={props.format}
+            aiSetting={'prefixNameAppend'}
           />
           <TextInput
             fieldName="prefill"
@@ -667,7 +771,42 @@ const GenSettings: Component<Props & { pane: boolean; format?: ThirdPartyFormat;
           service={props.service}
           aiSetting={'temp'}
         />
-
+        <RangeInput
+          fieldName="dynatemp_range"
+          label="Dynamic Temperature Range"
+          helperText="The range to use for dynamic temperature. When used, the actual temperature is allowed to be automatically adjusted dynamically between DynaTemp ± DynaTempRange. For example, setting `temperature=0.4` and `dynatemp_range=0.1` will result in a minimum temp of 0.3 and max of 0.5. (Put this value on 0 to disable its effect)"
+          min={0}
+          max={20}
+          step={0.01}
+          value={props.inherit?.dynatemp_range || 0}
+          disabled={props.disabled}
+          service={props.service}
+          aiSetting={'dynatemp_range'}
+        />
+        <RangeInput
+          fieldName="dynatemp_exponent"
+          label="Dynamic Temperature Exponent"
+          helperText="Exponent for dynatemp sampling. Range [0, inf)."
+          min={0}
+          max={20}
+          step={0.01}
+          value={props.inherit?.dynatemp_exponent || 1}
+          disabled={props.disabled}
+          service={props.service}
+          aiSetting={'dynatemp_exponent'}
+        />
+        <RangeInput
+          fieldName="smoothingFactor"
+          label="Smoothing Factor"
+          helperText="Activates Quadratic Sampling. Applies an S-curve to logits, penalizing low-probability tokens and smoothing out high-probability tokens. Allows model creativity at lower temperatures. (Put this value on 0 to disable its effect)"
+          min={0}
+          max={10}
+          step={0.01}
+          value={props.inherit?.smoothingFactor || 0}
+          disabled={props.disabled}
+          service={props.service}
+          aiSetting={'smoothingFactor'}
+        />
         <RangeInput
           fieldName="cfgScale"
           label="CFG Scale"
@@ -786,6 +925,25 @@ const GenSettings: Component<Props & { pane: boolean; format?: ThirdPartyFormat;
           aiSetting={'topA'}
         />
 
+        <Toggle
+          fieldName="mirostatToggle"
+          label="Use Mirostat"
+          helperText={
+            <>
+              Activates the Mirostat sampling technique. It aims to control perplexity during
+              sampling. See the {` `}
+              <A class="link" href="https://arxiv.org/abs/2007.14966">
+                paper
+              </A>
+              {'.'} Aphrodite only supports mode 2 (on) or 0 (off).
+            </>
+          }
+          value={props.inherit?.mirostatToggle ?? false}
+          disabled={props.disabled}
+          service={props.service}
+          aiSetting={'mirostatToggle'}
+          format={props.format}
+        />
         <RangeInput
           fieldName="mirostatTau"
           label="Mirostat Tau"
@@ -862,7 +1020,7 @@ const GenSettings: Component<Props & { pane: boolean; format?: ThirdPartyFormat;
             props.inherit?.repetitionPenaltyRange ?? defaultPresets.basic.repetitionPenaltyRange
           }
           disabled={props.disabled}
-          service={props.service}
+          service={props.format != 'aphrodite' ? props.service : 'openai'} // we dont want this showing if the format is set to aphrodite
           aiSetting={'repetitionPenaltyRange'}
           format={props.format}
         />
@@ -877,8 +1035,43 @@ const GenSettings: Component<Props & { pane: boolean; format?: ThirdPartyFormat;
             props.inherit?.repetitionPenaltySlope ?? defaultPresets.basic.repetitionPenaltySlope
           }
           disabled={props.disabled}
-          service={props.service}
+          service={props.format != 'aphrodite' ? props.service : 'openai'} // we dont want this showing if the format is set to aphrodite
           aiSetting={'repetitionPenaltySlope'}
+          format={props.format}
+        />
+        <RangeInput
+          fieldName="etaCutoff"
+          label="ETA Cutoff"
+          helperText={
+            <>
+              In units of 1e-4; a reasonable value is 3. The main parameter of the special Eta
+              Sampling technique. See {` `}
+              <A class="link" href="https://arxiv.org/pdf/2210.15191.pdf">
+                this paper
+              </A>{' '}
+              for a description.
+            </>
+          }
+          min={0}
+          max={20}
+          step={0.0001}
+          value={props.inherit?.etaCutoff ?? 0}
+          disabled={props.disabled}
+          service={props.service}
+          aiSetting={'etaCutoff'}
+          format={props.format}
+        />
+        <RangeInput
+          fieldName="epsilonCutoff"
+          label="Epsilon Cutoff"
+          helperText="In units of 1e-4; a reasonable value is 3. This sets a probability floor below which tokens are excluded from being sampled."
+          min={0}
+          max={9}
+          step={0.0001}
+          value={props.inherit?.epsilonCutoff ?? 0}
+          disabled={props.disabled}
+          service={props.service}
+          aiSetting={'epsilonCutoff'}
           format={props.format}
         />
         <Show when={!props.service}>
@@ -1040,8 +1233,8 @@ const SamplerOrder: Component<{
     }
   })
 
-  const updateValue = (next: number[]) => {
-    setValue(next.join(','))
+  const updateValue = (next: SortItem[]) => {
+    setValue(next.map((n) => n.value).join(','))
   }
 
   const toggleSampler = (id: number) => {
@@ -1063,12 +1256,13 @@ const SamplerOrder: Component<{
     if (!props.service) return list
 
     const order = samplerOrders[props.service]
-    if (!order) return []
+    const orderMap = samplerServiceMap[props.service]
+    if (!order || !orderMap) return []
 
-    let id = 0
     for (const item of order) {
       list.push({
-        id: id++,
+        id: orderMap[item],
+        value: item,
         label: settingLabels[item]!,
       })
     }
@@ -1084,7 +1278,11 @@ const SamplerOrder: Component<{
   }
 
   return (
-    <div classList={{ hidden: items().length === 0 }}>
+    <div
+      classList={{
+        hidden: items().length === 0 || props.inherit?.thirdPartyFormat === 'aphrodite',
+      }}
+    >
       <Sortable
         label="Sampler Order"
         items={items()}
@@ -1175,6 +1373,7 @@ export function getPresetFormData(ref: any) {
     promptOrderFormat: 'string?',
     promptOrder: 'string?',
     promptTemplateId: 'string?',
+    modelFormat: 'string?',
   })
 
   const registered = getRegisteredSettings(data.service as AIAdapter, ref)

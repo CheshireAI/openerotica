@@ -270,6 +270,7 @@ export async function validateApiAccess(apiKey: string) {
   }
 
   if (config.apiAccess === 'subscribers') {
+    if (user.admin) return { user }
     const tier = store.users.getUserSubTier(user)
     if (!tier || tier.level <= 0) return
     const sub = await db('subscription-tier').findOne({ _id: user.sub?.tierId })
@@ -296,6 +297,10 @@ export async function validateSubscription(user: AppSchema.User) {
 
   const { type, tier, level } = sub
   if (!tier.enabled) return tier.level ?? -1
+
+  if (type === 'manual') {
+    return sub.level
+  }
 
   if (type === 'patreon') {
     if (!user.patreon) return -1

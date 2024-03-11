@@ -9,6 +9,10 @@ import { parseTemplate } from '/common/template-parser'
 import { neat } from '/common/util'
 import { AppSchema } from '/common/types'
 import { localApi } from './storage'
+import { getImageData } from './chars'
+import { subscribe } from '../socket'
+import { getAssetUrl } from '/web/shared/util'
+import { v4 } from 'uuid'
 
 type GenerateOpts = {
   chatId?: string
@@ -17,17 +21,24 @@ type GenerateOpts = {
   prompt?: string
   append?: boolean
   source: string
+
+  /** If true, the Image Settings prefix and suffix won't be applied */
+  noAffix?: boolean
   onDone: (image: string) => void
 }
 
 export const imageApi = {
   generateImage,
   generateImageWithPrompt,
+  generateImageAsync,
+  dataURLtoFile,
 }
 
 export async function generateImage({ chatId, messageId, onDone, ...opts }: GenerateOpts) {
   const entities = await getPromptEntities()
   const prompt = opts.prompt ? opts.prompt : await createSummarizedImagePrompt(entities)
+
+  const characterId = entities.messages.reduceRight((id, msg) => id || msg.characterId)
 
   const max = getMaxImageContext(entities.user)
   const trimmed = await encode(prompt)
@@ -41,6 +52,8 @@ export async function generateImage({ chatId, messageId, onDone, ...opts }: Gene
     ephemeral: opts.ephemeral,
     append: opts.append,
     source: opts.source,
+    chatId,
+    characterId,
   })
   return res
 }
@@ -48,7 +61,7 @@ export async function generateImage({ chatId, messageId, onDone, ...opts }: Gene
 export async function generateImageWithPrompt(
   prompt: string,
   source: string,
-  onDone: (image: string) => void
+  onDone: (result: { image: string; file: File; data?: string }) => void
 ) {
   const user = getStore('user').getState().user
 
@@ -63,7 +76,11 @@ export async function generateImageWithPrompt(
         prompt,
         user.images?.negative || horde.defaults.image.negative
       )
-      onDone(image)
+
+      const file = await dataURLtoFile(image)
+      const data = await getImageData(file)
+
+      onDone({ image, file, data })
       return localApi.result({})
     } catch (ex: any) {
       return localApi.error(ex.message)
@@ -80,6 +97,66 @@ export async function generateImageWithPrompt(
   return res
 }
 
+type ImageResult = { image: string; file: File; data?: string }
+
+export async function generateImageAsync(
+  prompt: string,
+  opts: { noAffix?: boolean } = {}
+): Promise<ImageResult> {
+  const user = getStore('user').getState().user
+  const source = `image-${v4()}`
+
+  if (!user) {
+    throw new Error('Could not get user settings')
+  }
+
+  if (!isLoggedIn() && (!user.images || user.images.type === 'horde')) {
+    try {
+      const { text: image } = await horde.generateImage(
+        user,
+        prompt,
+        user.images?.negative || horde.defaults.image.negative
+      )
+
+      const file = await dataURLtoFile(image)
+      const data = await getImageData(file)
+
+      return { image, file, data }
+    } catch (ex: any) {
+      throw ex
+    }
+  }
+
+  await api.post<{ success: boolean }>(`/character/image`, {
+    prompt,
+    user,
+    ephemeral: true,
+    source,
+    noAffix: opts.noAffix,
+  })
+
+  return new Promise<ImageResult>((resolve) => {
+    callbacks.set(source, resolve)
+  })
+}
+
+const callbacks = new Map<string, (result: ImageResult) => void>()
+
+subscribe('image-generated', { image: 'string', source: 'string' }, async (body) => {
+  if (body.source === 'avatar') return
+
+  const callback = callbacks.get(body.source)
+  if (!callback) return
+
+  callbacks.delete(body.source)
+  const url = getAssetUrl(body.image)
+  const image = await fetch(getAssetUrl(body.image)).then((res) => res.blob())
+  const file = new File([image], `${body.source}.png`, { type: 'image/png' })
+  const data = await getImageData(file)
+
+  callback({ image: url, file, data })
+})
+
 const SUMMARY_BACKENDS: { [key in AIAdapter]?: (opts: PromptEntities) => boolean } = {
   openai: () => true,
   novel: () => true,
@@ -92,13 +169,6 @@ const SUMMARY_BACKENDS: { [key in AIAdapter]?: (opts: PromptEntities) => boolean
 }
 
 async function createSummarizedImagePrompt(opts: PromptEntities) {
-  // if (opts.user?.useLocalPipeline && pipelineApi.isAvailable().summary) {
-  //   const { prompt } = await msgsApi.createActiveChatPrompt({ kind: 'summary' }, 2048)
-  //   console.log('Using local summarization')
-  //   const res = await pipelineApi.summarize(prompt.template.parsed)
-  //   if (res?.result) return res.result.summary
-  // }
-
   const handler = opts.settings?.service
     ? SUMMARY_BACKENDS[opts.settings?.service]
     : (_opts: any) => false
@@ -186,4 +256,14 @@ function getSummaryTemplate(service: AIAdapter) {
       Image caption: [summary | tokens=250]
       `
   }
+}
+
+async function dataURLtoFile(base64: string) {
+  if (!base64.startsWith('data')) {
+    base64 = `data:image/png;base64,${base64}`
+  }
+
+  return fetch(base64)
+    .then((res) => res.blob())
+    .then((buf) => new File([buf], 'avatar.png', { type: 'image/png' }))
 }

@@ -9,16 +9,20 @@ export type ImageGenerateRequest = {
   ephemeral?: boolean
   append?: boolean
   source: string
+  noAffix?: boolean
+  characterId?: string
+}
+
+export type ImageRequestOpts = {
+  user: AppSchema.User
+  prompt: string
+  negative: string
 }
 
 export type ImageAdapter = (
-  opts: {
-    user: AppSchema.User
-    prompt: string
-    negative: string
-  },
+  opts: ImageRequestOpts,
   log: AppLog,
   guestId?: string
 ) => Promise<ImageAdapterResponse>
 
-export type ImageAdapterResponse = { ext: string; content: Buffer }
+export type ImageAdapterResponse = { ext: string; content: Buffer | string }

@@ -18,6 +18,7 @@ type WikiItem = {
 }
 
 const models = {
+  // embedding: 'Xenova/all-mpnet-base-v2',
   embedding: 'Xenova/all-MiniLM-L6-v2',
   captioning: 'Xenova/vit-gpt2-image-captioning',
 }
@@ -219,7 +220,10 @@ async function query(chatId: string, text: string, before?: string): Promise<Que
   }
 
   const promise = new Promise<QueryResult>((resolve) => {
-    const timer = setTimeout(() => resolve({ type: 'result', requestId, messages: [] }), 1000)
+    const timer = setTimeout(() => {
+      console.warn('Embedding request timed out')
+      resolve({ type: 'result', requestId, messages: [] })
+    }, 1000)
     embedCallbacks.set(requestId, (msg) => {
       clearTimeout(timer)
       resolve(msg)

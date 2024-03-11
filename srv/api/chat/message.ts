@@ -1,6 +1,6 @@
 import { UnwrapBody, assertValid } from '/common/valid'
 import { store } from '../../db'
-import { createTextStreamV2, inferenceAsync } from '../../adapter/generate'
+import { createTextStreamV2, getResponseEntities } from '../../adapter/generate'
 import { AppRequest, StatusError, errors, handle } from '../wrap'
 import { sendGuest, sendMany, sendOne } from '../ws'
 import { obtainLock, releaseLock } from './lock'
@@ -8,15 +8,19 @@ import { AppSchema } from '../../../common/types/schema'
 import { v4 } from 'uuid'
 import { Response } from 'express'
 import { publishMany } from '../ws/handle'
-import { runGuidance } from '/common/guidance/guidance-parser'
-import { cyoaTemplate } from '/common/mode-templates'
-import { fillPromptWithLines } from '/common/prompt'
-import { getTokenCounter } from '/srv/tokenize'
+import { getScenarioEventType } from '/common/scenario'
 
 type GenRequest = UnwrapBody<typeof genValidator>
 
 const sendValidator = {
-  kind: ['send-noreply', 'ooc'],
+  kind: [
+    'send-noreply',
+    'ooc',
+    'send-event:world',
+    'send-event:character',
+    'send-event:hidden',
+    'send-event:ooc',
+  ],
   text: 'string',
   impersonate: 'any?',
 } as const
@@ -28,6 +32,7 @@ const genValidator = {
     'send-event:world',
     'send-event:character',
     'send-event:hidden',
+    'send-event:ooc',
     'ooc',
     'retry',
     'continue',
@@ -86,8 +91,8 @@ export const createMessage = handle(async (req) => {
     const newMsg = newMessage(v4(), chatId, body.text, {
       userId: impersonate ? undefined : 'anon',
       characterId: impersonate?._id,
-      ooc: body.kind === 'ooc',
-      event: undefined,
+      ooc: body.kind === 'ooc' || body.kind === 'send-event:ooc',
+      event: getScenarioEventType(body.kind),
     })
     sendGuest(guest, { type: 'message-created', msg: newMsg, chatId })
   } else {
@@ -102,8 +107,8 @@ export const createMessage = handle(async (req) => {
       message: body.text,
       characterId: impersonate?._id,
       senderId: userId,
-      ooc: body.kind === 'ooc',
-      event: undefined,
+      ooc: body.kind === 'ooc' || body.kind === 'send-event:ooc',
+      event: getScenarioEventType(body.kind),
     })
 
     sendMany(members, { type: 'message-created', msg: userMsg, chatId })
@@ -189,7 +194,7 @@ export const generateMessageV2 = handle(async (req, res) => {
       characterId: replyAs?._id,
       senderId: undefined,
       ooc: false,
-      event: body.kind.split(':')[1] as AppSchema.EventTypes,
+      event: getScenarioEventType(body.kind),
     })
     sendMany(members, { type: 'message-created', msg: userMsg, chatId })
   }
@@ -224,16 +229,18 @@ export const generateMessageV2 = handle(async (req, res) => {
   })
   res.json({ requestId, success: true, generating: true, message: 'Generating message' })
 
-  const { stream, adapter, ...entities } = await createTextStreamV2(
-    { ...body, chat, replyAs, impersonate, requestId },
+  const entities = await getResponseEntities(chat, body.sender.userId, body.settings)
+  const { stream, adapter, ...metadata } = await createTextStreamV2(
+    { ...body, chat, replyAs, impersonate, requestId, entities },
     log
   )
 
   log.setBindings({ adapter })
 
   let generated = ''
+  let retries: string[] = []
   let error = false
-  let meta = { ctx: entities.settings.maxContextLength, char: entities.size, len: entities.length }
+  let meta = { ctx: metadata.settings.maxContextLength, char: metadata.size, len: metadata.length }
 
   const messageId =
     body.kind === 'retry'
@@ -247,6 +254,15 @@ export const generateMessageV2 = handle(async (req, res) => {
       if (typeof gen === 'string') {
         generated = gen
         continue
+      }
+
+      if ('tokens' in gen) {
+        generated = gen.tokens as string
+      }
+
+      if ('gens' in gen) {
+        retries = gen.gens
+        break
       }
 
       if ('partial' in gen) {
@@ -313,44 +329,6 @@ export const generateMessageV2 = handle(async (req, res) => {
 
   const actions: AppSchema.ChatAction[] = []
 
-  if (chat.mode === 'adventure') {
-    const lines = await fillPromptWithLines(
-      getTokenCounter('main', undefined),
-      2048,
-      '',
-      body.lines.concat(`${body.replyAs.name}: ${responseText}`)
-    )
-
-    const prompt = cyoaTemplate(
-      body.settings.service,
-      body.settings.service === 'openai'
-        ? body.settings.thirdPartyModel || body.settings.oaiModel
-        : ''
-    )
-
-    const infer = async (text: string) => {
-      const res = await inferenceAsync({
-        prompt: text,
-        log,
-        service: entities.settings.service!,
-        settings: entities.settings,
-        user: entities.user,
-      })
-      return res.generated
-    }
-
-    const { values } = await runGuidance(prompt, {
-      infer,
-      placeholders: {
-        history: lines.join('\n'),
-        user: body.impersonate?.name || body.sender.handle,
-      },
-    })
-    actions.push({ emote: values.emote1, action: values.action1 })
-    actions.push({ emote: values.emote2, action: values.action2 })
-    actions.push({ emote: values.emote3, action: values.action3 })
-  }
-
   await releaseLock(chatId)
 
   switch (body.kind) {
@@ -375,6 +353,7 @@ export const generateMessageV2 = handle(async (req, res) => {
         ooc: false,
         actions,
         meta,
+        retries,
         event: undefined,
       })
 
@@ -406,13 +385,18 @@ export const generateMessageV2 = handle(async (req, res) => {
           adapter,
           meta,
           state: 'retried',
+          retries: body.replacing.retries,
         })
+        const nextRetries = [body.replacing.msg]
+          .concat(retries)
+          .concat(body.replacing.retries || [])
         sendMany(members, {
           type: 'message-retry',
           requestId,
           chatId,
           messageId: body.replacing._id,
           message: responseText,
+          retries: nextRetries,
           actions,
           adapter,
           generate: true,
@@ -428,6 +412,7 @@ export const generateMessageV2 = handle(async (req, res) => {
           actions,
           ooc: false,
           meta,
+          retries,
           event: undefined,
         })
         sendMany(members, {
@@ -491,6 +476,7 @@ async function handleGuestGenerate(body: GenRequest, req: AppRequest, res: Respo
   if (body.kind === 'send' || body.kind === 'ooc') {
     newMsg = newMessage(v4(), chatId, body.text!, {
       userId: 'anon',
+      characterId: body.impersonate?._id,
       ooc: body.kind === 'ooc',
       event: undefined,
     })
@@ -498,7 +484,7 @@ async function handleGuestGenerate(body: GenRequest, req: AppRequest, res: Respo
     newMsg = newMessage(v4(), chatId, body.text!, {
       characterId: replyAs?._id,
       ooc: false,
-      event: body.kind.split(':')[1] as AppSchema.EventTypes,
+      event: getScenarioEventType(body.kind),
     })
   }
 
@@ -521,6 +507,7 @@ async function handleGuestGenerate(body: GenRequest, req: AppRequest, res: Respo
   log.setBindings({ adapter })
 
   let generated = ''
+  let retries: string[] = []
   let error = false
   let meta = { ctx: entities.settings.maxContextLength, char: entities.size, len: entities.length }
 
@@ -528,6 +515,15 @@ async function handleGuestGenerate(body: GenRequest, req: AppRequest, res: Respo
     if (typeof gen === 'string') {
       generated = gen
       continue
+    }
+
+    if ('tokens' in gen) {
+      generated = gen.tokens as string
+    }
+
+    if ('gens' in gen) {
+      retries = gen.gens
+      break
     }
 
     if ('partial' in gen) {
@@ -563,12 +559,18 @@ async function handleGuestGenerate(body: GenRequest, req: AppRequest, res: Respo
 
   const characterId = body.kind === 'self' ? undefined : body.replyAs?._id || body.char?._id
   const senderId = body.kind === 'self' ? 'anon' : undefined
+
+  if (body.kind === 'retry' && body.replacing) {
+    retries = [body.replacing.msg].concat(retries).concat(body.replacing.retries || [])
+  }
+
   const response = newMessage(messageId, chatId, responseText, {
     characterId,
     userId: senderId,
     ooc: false,
     meta,
     event: undefined,
+    retries,
   })
 
   switch (body.kind) {
@@ -581,6 +583,9 @@ async function handleGuestGenerate(body: GenRequest, req: AppRequest, res: Respo
     case 'retry':
     case 'self':
     case 'send':
+    case 'send-event:world':
+    case 'send-event:character':
+    case 'send-event:hidden':
       sendGuest(guest, {
         type: 'guest-message-created',
         requestId,
@@ -604,7 +609,8 @@ function newMessage(
     characterId?: string
     ooc: boolean
     meta?: any
-    event: undefined | AppSchema.EventTypes
+    event: undefined | AppSchema.ScenarioEventType
+    retries?: string[]
   }
 ) {
   const userMsg: AppSchema.ChatMessage = {
@@ -613,6 +619,7 @@ function newMessage(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     kind: 'chat-message',
+    retries: props.retries || [],
     msg: text,
     ...props,
   }

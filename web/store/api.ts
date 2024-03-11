@@ -8,7 +8,10 @@ export function setSocketId(id: string) {
 }
 
 export const baseUrl =
-  location.port === '1234' || location.port === '3001'
+  location.port === '1234' ||
+  location.port === '3001' ||
+  location.hostname === 'localhost' ||
+  location.hostname === '127.0.0.1'
     ? `${location.protocol}//${location.hostname}:3001`
     : location.origin
 
@@ -205,7 +208,7 @@ export function setAltAuth(jwt: string) {
 
   Cookies.set('original-auth', prev, { sameSite: 'strict', expires: 30 })
   Cookies.set('auth', jwt, { sameSite: 'strict', expires: 30 })
-  location.href = location.origin
+  location.href = `${location.origin}/settings?tab=4`
 }
 
 export function revertAuth() {

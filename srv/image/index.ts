@@ -18,6 +18,16 @@ export async function generateImage(
 ) {
   const broadcastIds: string[] = []
 
+  const chat = chatId ? await store.chats.getChatOnly(chatId) : undefined
+  const characterId =
+    chat?.imageSource === 'main-character'
+      ? chat.characterId
+      : chat?.imageSource === 'last-character'
+      ? opts.characterId
+      : undefined
+  const character =
+    chat && characterId ? await store.characters.getCharacter(chat.userId, characterId) : undefined
+
   if (!guestId) {
     broadcastIds.push(user._id)
     if (chatId) {
@@ -33,41 +43,59 @@ export async function generateImage(
   let parsed = opts.prompt.replace(/\{\{prompt\}\}/g, ' ')
   let prompt = parsed
 
-  if (user.images?.template) {
-    prompt = user.images.template.replace(/\{\{prompt\}\}/g, parsed)
+  let imageSettings =
+    chat?.imageSource === 'main-character' || chat?.imageSource === 'last-character'
+      ? character?.imageSettings
+      : chat?.imageSource === 'chat'
+      ? chat?.imageSettings
+      : user.images
+
+  if (!imageSettings) {
+    imageSettings = user.images
+  }
+
+  if (imageSettings?.template) {
+    prompt = imageSettings.template.replace(/\{\{prompt\}\}/g, parsed)
     if (!prompt.includes(parsed)) {
       prompt = prompt + ' ' + parsed
     }
   }
 
   prompt = prompt.trim()
-  if (user.images?.prefix) {
-    prompt = user.images.prefix + ' ' + prompt
+
+  if (!opts.noAffix) {
+    const parts = [prompt]
+    if (imageSettings?.prefix) {
+      parts.unshift(imageSettings.prefix)
+    }
+
+    if (imageSettings?.suffix) {
+      parts.push(imageSettings.suffix)
+    }
+
+    prompt = parts.join(', ').replace(/,+/g, ',').replace(/ +/g, ' ')
   }
 
-  if (user.images?.suffix) {
-    prompt += ' ' + user.images.suffix
-  }
-
-  log.debug({ prompt, type: user.images?.type }, 'Image prompt')
-  const negative = user.images?.negative || DEFAULT_NEGATIVE
+  log.debug({ prompt, type: imageSettings?.type, source: chat?.imageSource }, 'Image prompt')
+  const negative = imageSettings?.negative || DEFAULT_NEGATIVE
 
   if (!guestId) {
     sendOne(user._id, {
       type: 'image-generation-started',
       prompt,
       negative,
-      service: user.images?.type,
+      service: imageSettings?.type,
     })
   }
 
   try {
-    switch (user.images?.type || 'horde') {
+    switch (imageSettings?.type || 'horde') {
       case 'novel':
         image = await handleNovelImage({ user, prompt, negative }, log, guestId)
         break
 
       case 'sd':
+      case 'agnai':
         image = await handleSDImage({ user, prompt, negative }, log, guestId)
         break
 
@@ -87,13 +115,20 @@ export async function generateImage(
   if (image) {
     // Guest images do not get saved under any circumstances
 
+    if (typeof image.content === 'string' && image.content.startsWith('http')) {
+      output = image.content
+    }
+
     if (guestId) {
-      if (!output.startsWith('data')) {
+      if (!output) {
         output = `data:image/image;base64,${image.content.toString('base64')}`
       }
     } else if (!opts.ephemeral && config.storage.saveImages) {
       const name = `${v4()}.${image.ext}`
-      output = await saveFile(name, image.content)
+
+      if (!output) {
+        output = await saveFile(name, image.content)
+      }
 
       if (!guestId && chatId) {
         const msg = await createImageMessage({
@@ -110,7 +145,7 @@ export async function generateImage(
         if (msg) return
       }
     } else {
-      output = await saveFile(`temp-${v4()}.${image.ext}`, image.content, 300)
+      output = output || (await saveFile(`temp-${v4()}.${image.ext}`, image.content, 300))
     }
   }
 

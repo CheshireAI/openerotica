@@ -4,12 +4,13 @@ import Button, { ToggleButton } from '../../shared/Button'
 import Modal from '../../shared/Modal'
 import PageHeader from '../../shared/PageHeader'
 import TextInput from '../../shared/TextInput'
-import { getAssetUrl, getStrictForm, setComponentPageTitle } from '../../shared/util'
-import { adminStore, presetStore, userStore } from '../../store'
+import { getAssetUrl, getStrictForm, setComponentPageTitle, toLocalTime } from '../../shared/util'
+import { adminStore, presetStore, toastStore, userStore } from '../../store'
 import { AppSchema } from '/common/types'
 import Select from '/web/shared/Select'
 import { A } from '@solidjs/router'
-import { elapsedSince } from '/common/util'
+import { elapsedSince, getUserSubscriptionTier, now } from '/common/util'
+import type Stripe from 'stripe'
 
 const UsersPage: Component = () => {
   let ref: any
@@ -80,8 +81,9 @@ const UsersPage: Component = () => {
                 <Select
                   class="text-xs"
                   fieldName="subTier"
-                  value={user.sub?.tierId ?? ''}
+                  value={getUserSubscriptionTier(user, config.tiers)?.tier._id || ''}
                   items={subTiers()}
+                  disabled
                   onChange={(ev) => {
                     adminStore.changeUserTier(user._id, ev.value)
                   }}
@@ -113,8 +115,32 @@ export default UsersPage
 const InfoModel: Component<{ show: boolean; close: () => void; userId: string; name: string }> = (
   props
 ) => {
+  let subId: any
   const state = adminStore()
   const tiers = userStore((s) => ({ list: s.tiers }))
+  const [session, setSession] = createSignal<Stripe.Checkout.Session>()
+  const [manualId, setManualId] = createSignal(state.info?.manualSub?.tierId || '')
+  const [expiry, setExpiry] = createSignal(new Date(state.info?.manualSub?.expiresAt || now()))
+
+  const subTiers = createMemo(() => {
+    const base = [{ label: '[-1] None', value: '-1' }]
+    const list =
+      tiers.list.map((tier) => ({
+        label: `[${tier.level}] ${tier.name} ${!tier.enabled ? '(disabled)' : ''}`,
+        value: tier._id,
+      })) || []
+
+    return base.concat(list).sort((l, r) => +l.value - +r.value)
+  })
+
+  const assignSub = () => {
+    const id = subId.value
+    if (!id) {
+      return toastStore.error(`No subscription ID`)
+    }
+
+    adminStore.assignSubscription(props.userId, id)
+  }
 
   return (
     <Modal
@@ -158,6 +184,58 @@ const InfoModel: Component<{ show: boolean; close: () => void; userId: string; n
               </td>
             </tr>
             <tr>
+              <th>Gift</th>
+              <td>
+                <div class="flex gap-1">
+                  <Select
+                    class="text-sm"
+                    fieldName="manualId"
+                    items={subTiers()}
+                    onChange={(ev) => setManualId(ev.value)}
+                    value={state.info?.manualSub?.tierId}
+                  />
+                  <TextInput
+                    parentClass="text-xs"
+                    fieldName="expiry"
+                    type="datetime-local"
+                    value={toLocalTime(state.info?.manualSub?.expiresAt || now())}
+                    onChange={(ev) => setExpiry(new Date(ev.currentTarget.value))}
+                  />
+                  <Button onClick={() => adminStore.assignGift(props.userId, manualId(), expiry())}>
+                    Apply
+                  </Button>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <th>Assign Sub</th>
+              <td>
+                <div class="flex gap-1">
+                  <TextInput
+                    ref={subId}
+                    parentClass="w-full"
+                    fieldName="subscriptionId"
+                    placeholder="Stripe Subscription ID"
+                  />
+                  <Button onClick={assignSub}>Assign</Button>
+                </div>
+              </td>
+            </tr>
+            <Show when={state.info?.stripeSessions?.length}>
+              <tr>
+                <th>Session IDs</th>
+                <td>
+                  <For each={state.info?.stripeSessions}>
+                    {(id) => (
+                      <Button size="pill" onClick={() => adminStore.viewSession(id, setSession)}>
+                        {id.slice(8, 16)}...
+                      </Button>
+                    )}
+                  </For>
+                </td>
+              </tr>
+            </Show>
+            <tr>
               <th>Subscription Level</th>
               <td>
                 Native:{state.info?.sub?.level ?? '-1'} / Patreon:
@@ -190,7 +268,7 @@ const InfoModel: Component<{ show: boolean; close: () => void; userId: string; n
               </tr>
             </Show>
 
-            <Show when={state.info?.state.state !== 'new'}>
+            <Show when={state.info?.state.history.length ?? 0 > 0}>
               <tr>
                 <th>State</th>
                 <td>{state.info?.state.state}</td>
@@ -223,6 +301,18 @@ const InfoModel: Component<{ show: boolean; close: () => void; userId: string; n
                   )
                 }}
               </For>
+            </Show>
+            <Show when={!!session()}>
+              <tr>
+                <td colSpan={2}>
+                  <div class="bg-700 mt-4 flex justify-center">Session: {session()?.id}</div>
+                </td>
+              </tr>
+              <tr>
+                <td colSpan={2}>
+                  <pre class="text-xs">{JSON.stringify(session(), null, 2)}</pre>
+                </td>
+              </tr>
             </Show>
           </tbody>
         </table>

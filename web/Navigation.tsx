@@ -7,6 +7,7 @@ import {
   HeartHandshake,
   HelpCircle,
   LogIn,
+  MailQuestion,
   MessageCircle,
   Moon,
   Plus,
@@ -18,6 +19,7 @@ import {
   VenetianMask,
   Volume2,
   VolumeX,
+  Wand2,
   X,
 } from 'lucide-solid'
 import {
@@ -35,17 +37,17 @@ import AvatarIcon, { CharacterAvatar } from './shared/AvatarIcon'
 import {
   audioStore,
   characterStore,
-  chatStore,
   inviteStore,
   settingStore,
   toastStore,
   userStore,
 } from './store'
 import Slot from './shared/Slot'
-import { useEffect, useResizeObserver, useWindowSize } from './shared/hooks'
+import { useEffect, usePaneManager, useResizeObserver, useWindowSize } from './shared/hooks'
 import WizardIcon from './icons/WizardIcon'
 import Badge from './shared/Badge'
 import { soundEmitter } from './shared/Audio/playable-events'
+import Tooltip from './shared/Tooltip'
 
 const MobileNavHeader = () => {
   const user = userStore()
@@ -75,8 +77,8 @@ const Navigation: Component = () => {
   let content: any
   const state = settingStore()
   const user = userStore()
-  const chat = chatStore()
   const size = useWindowSize()
+  const pane = usePaneManager()
 
   const suffix = createMemo(() => (user.sub?.level ?? -1 > 0 ? '+' : ''))
 
@@ -98,7 +100,7 @@ const Navigation: Component = () => {
   })
 
   const hide = createMemo(() => {
-    if (!!chat.opts.pane && !state.showMenu) return 'drawer--hide'
+    if (pane.showing() && !state.showMenu) return 'drawer--hide'
     if (state.showMenu) return ''
     return 'drawer--hide'
   })
@@ -106,7 +108,7 @@ const Navigation: Component = () => {
   const fullscreen = createMemo(() => {
     if (state.fullscreen) return 'hidden'
 
-    if (chat.opts.pane && size.width() <= 1200) {
+    if (pane.showing() && size.width() <= 1200) {
       return 'hidden'
     }
 
@@ -173,6 +175,14 @@ const UserNavigation: Component = () => {
   const toasts = toastStore()
   const invites = inviteStore()
 
+  const guidance = createMemo(() => {
+    const usable = menu.config.subs.some((sub) => sub.guidance)
+    if (!usable) return false
+
+    const access = !!menu.config.guidanceAccess || !!user.user?.admin
+    return access
+  })
+
   const count = createMemo(() => {
     return toasts.unseen + invites.invites.length
   })
@@ -191,6 +201,13 @@ const UserNavigation: Component = () => {
       <CharacterLink />
 
       <ChatLink />
+
+      <Show when={guidance()}>
+        <Item href="/saga" ariaLabel="Sagas Preview">
+          <Wand2 aria-hidden="true" />
+          Sagas Preview
+        </Item>
+      </Show>
 
       <Library />
       <MultiItem>
@@ -231,6 +248,18 @@ const UserNavigation: Component = () => {
       </Show>
 
       <div class="flex flex-wrap justify-center gap-[2px] text-sm">
+        <Show when={!!menu.config.serverConfig?.supportEmail}>
+          <ExternalLink
+            href={`mailto:${menu.config.serverConfig?.supportEmail}`}
+            newtab
+            ariaLabel="Email Support"
+          >
+            <Tooltip position="top" tip={`${menu.config.serverConfig?.supportEmail}`}>
+              <MailQuestion aria-hidden />
+            </Tooltip>
+          </ExternalLink>
+        </Show>
+
         <Item href="/faq" ariaLabel="Open FAQ page">
           <HelpCircle aria-hidden="true" />
         </Item>
@@ -405,22 +434,26 @@ const GuestNavigation: Component = () => {
   )
 }
 
+function onItemClick(onClick?: () => void) {
+  return () => {
+    onClick?.()
+    const { showMenu } = settingStore.getState()
+    if (showMenu) settingStore.closeMenu()
+  }
+}
+
 const Item: Component<{
   href?: string
   ariaLabel?: string
   children: string | JSX.Element
   onClick?: () => void
 }> = (props) => {
-  const menu = settingStore()
   return (
     <>
       <Show when={!props.href}>
         <div
           class="flex min-h-[2.5rem] cursor-pointer items-center justify-start gap-4 rounded-lg px-2 hover:bg-[var(--bg-700)] sm:min-h-[2.5rem]"
-          onClick={() => {
-            if (props.onClick) props.onClick()
-            else if (menu.showMenu) settingStore.closeMenu()
-          }}
+          onClick={onItemClick(props.onClick)}
           tabindex={0}
           role="button"
           aria-label={props.ariaLabel}
@@ -432,10 +465,7 @@ const Item: Component<{
         <A
           href={props.href!}
           class="flex min-h-[2.5rem] items-center justify-start gap-4 rounded-lg px-2 hover:bg-[var(--bg-700)] sm:min-h-[2.5rem]"
-          onClick={() => {
-            if (props.onClick) props.onClick()
-            if (menu.showMenu) settingStore.closeMenu()
-          }}
+          onClick={onItemClick(props.onClick)}
           role="button"
           aria-label={props.ariaLabel}
         >
@@ -455,7 +485,6 @@ const SubItem: Component<{
   children: string | JSX.Element
   onClick?: () => void
 }> = (props) => {
-  const menu = settingStore()
   const loc = useLocation()
   return (
     <Show when={loc.pathname.startsWith(props.parent)}>
@@ -464,7 +493,7 @@ const SubItem: Component<{
         href={props.href!}
         class="flex min-h-[2.5rem] items-center justify-start gap-4 rounded-lg px-2 pl-4 hover:bg-[var(--bg-700)] sm:min-h-[2.5rem]"
         onClick={() => {
-          if (menu.showMenu) settingStore.closeMenu()
+          if (settingStore.getState().showMenu) settingStore.closeMenu()
         }}
         role="button"
         aria-label={props.ariaLabel}

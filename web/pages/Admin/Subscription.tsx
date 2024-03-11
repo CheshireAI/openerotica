@@ -22,11 +22,13 @@ import { useRootModal } from '/web/shared/hooks'
 
 const tokenizers = [
   { label: 'None', value: '' },
-  { label: 'LlamaV1', value: 'llama' },
+  { label: 'Llama', value: 'llama' },
   { label: 'Turbo', value: 'turbo' },
   { label: 'DaVinci', value: 'davinci' },
   { label: 'Novel Kayra', value: 'novel-modern' },
   { label: 'Novel (Old)', value: 'novel' },
+  { label: 'Mistral', value: 'mistral' },
+  { label: 'Yi', value: 'yi' },
 ]
 
 export const Subscription: Component = () => {
@@ -157,6 +159,7 @@ export const Subscription: Component = () => {
       thirdPartyFormat: 'string?',
       allowGuestUsage: 'boolean',
       tokenizer: 'string?',
+      guidanceCapable: 'boolean?',
     } as const
 
     const presetData = getPresetFormData(ref)
@@ -285,6 +288,13 @@ export const Subscription: Component = () => {
                         value={editing()?.subServiceUrl}
                         required
                         parentClass="mb-2"
+                      />
+
+                      <Toggle
+                        fieldName="guidanceCapable"
+                        label="Guidance Capable"
+                        helperText="Agnaistic service only"
+                        value={editing()?.guidanceCapable}
                       />
                     </Card>
 

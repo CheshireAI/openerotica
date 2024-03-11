@@ -2,7 +2,6 @@ import { Filter } from 'mongodb'
 import { db } from './client'
 import { encryptPassword } from './util'
 import { AppSchema } from '../../common/types/schema'
-import { getDb } from './client'
 import { domain } from '../domains'
 import { config } from '../config'
 
@@ -29,6 +28,10 @@ export async function getServerConfiguration() {
     slots: '',
     termsOfService: '',
     tosUpdated: new Date().toISOString(),
+    imagesEnabled: false,
+    imagesHost: '',
+    imagesModels: [],
+    supportEmail: '',
   }
 
   await db('configuration').insertOne(next)
@@ -79,7 +82,7 @@ export async function changePassword(opts: { userId: string; password: string })
 export async function getUserInfo(userId: string) {
   const billing = await db('user').findOne(
     { _id: userId },
-    { projection: { username: 1, sub: 1, billing: 1, patreon: 1 } }
+    { projection: { username: 1, sub: 1, manualSub: 1, billing: 1, patreon: 1, stripeSessions: 1 } }
   )
   const profile = await db('profile').findOne({ userId })
   const chats = await db('chat').countDocuments({ userId })
@@ -95,14 +98,4 @@ export async function getUserInfo(userId: string) {
     state,
     ...billing,
   }
-}
-
-export async function getConfig(): Promise<any> {
-  const cfg = await getDb().collection('configuration').findOne()
-  if (!cfg) {
-    await getDb().collection('configuration').insertOne({ slots: {} })
-    return {}
-  }
-
-  return cfg
 }

@@ -1,4 +1,4 @@
-import Stripe from 'stripe'
+import type Stripe from 'stripe'
 import { AppSchema, Patreon } from '../../common/types/schema'
 import { EVENTS, events } from '../emitter'
 import { api, isImpersonating, revertAuth, setAltAuth } from './api'
@@ -15,8 +15,10 @@ type UserInfo = {
   state: SubsAgg
   username: string
   sub: AppSchema.User['sub']
+  manualSub: AppSchema.User['manualSub']
   billing: AppSchema.User['billing']
   patreon: AppSchema.User['patreon']
+  stripeSessions?: string[]
 }
 
 type AdminState = {
@@ -112,6 +114,28 @@ export const adminStore = createStore<AdminState>('admin', {
       const res = await api.post(`/admin/users/${userId}/tier`, { tierId })
       if (res.error) toastStore.error(`Failed to update user: ${res.error}`)
       if (res.result) toastStore.success(`User updated`)
+    },
+    async assignSubscription(_, userId: string, subscriptionId: string) {
+      const res = await api.post(`/admin/billing/subscribe/admin-manual`, {
+        userId,
+        subscriptionId,
+      })
+      if (res.error) toastStore.error(res.error)
+      if (res.result) toastStore.success(`Successfully assigned subscription`)
+    },
+    async assignGift(_, userId: string, tierId: string, expiresAt: Date) {
+      const res = await api.post(`/admin/billing/subscribe/admin-gift`, {
+        userId,
+        tierId,
+        expiresAt: expiresAt.toISOString(),
+      })
+      if (res.error) toastStore.error(res.error)
+      if (res.result) toastStore.success(`Successfully assigned subscription`)
+    },
+    async viewSession(_, sessionId: string, cb: (session: Stripe.Checkout.Session) => void) {
+      const res = await api.post(`/admin/billing/subscribe/session`, { sessionId })
+      if (res.error) return toastStore.error(res.error)
+      if (res.result) cb(res.result)
     },
     async createTier(
       _,

@@ -109,10 +109,13 @@ const createTier = handle(async ({ body }) => {
       disableSlots: 'boolean',
       description: 'string',
       apiAccess: 'boolean',
+      guidanceAccess: 'boolean',
+      imagesAccess: 'boolean',
       patreon: 'any?',
     },
     body
   )
+
   const tier = await store.subs.createTier(body)
   return tier
 })
@@ -129,6 +132,8 @@ const updateTier = handle(async ({ body, params }) => {
       description: 'string',
       apiAccess: 'boolean',
       patreon: 'any?',
+      guidanceAccess: 'boolean',
+      imagesAccess: 'boolean',
     },
     body,
     true

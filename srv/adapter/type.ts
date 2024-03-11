@@ -10,6 +10,7 @@ export type GenerateRequestV2 = {
     | 'send-event:world'
     | 'send-event:character'
     | 'send-event:hidden'
+    | 'send-event:ooc'
     | 'ooc'
     | 'retry'
     | 'continue'
@@ -59,11 +60,17 @@ export type AdapterProps = {
   prompt: string
   parts: PromptParts
   lines: string[]
+  retries?: string[]
   characters?: Record<string, AppSchema.Character>
   impersonate: AppSchema.Character | undefined
   lastMessage?: string
   requestId: string
   encoder?: TokenCounter
+
+  guidance?: boolean
+  placeholders?: Record<string, string>
+  lists?: Record<string, string[]>
+  previous?: Record<string, string>
 
   subscription?: {
     level: number
@@ -85,6 +92,7 @@ export type ModelAdapter = (
   opts: AdapterProps
 ) => AsyncGenerator<
   | string
+  | { gens: string[] }
   | { partial: string }
   | { error: any }
   | { meta: any }

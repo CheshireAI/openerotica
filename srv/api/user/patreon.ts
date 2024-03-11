@@ -67,7 +67,7 @@ async function identity(token: string) {
   })
 
   if (identity.statusCode && identity.statusCode > 200) {
-    throw new StatusError(`Failed to get Patreon user information`, identity.statusCode)
+    throw new StatusError(`Failed to get Patreon user information (${identity.statusCode})`, 400)
   }
 
   const user: Patreon.User = identity.body.data
@@ -77,10 +77,12 @@ async function identity(token: string) {
       return obj.relationships.campaign?.data?.id === config.patreon.campaign_id
     }) || []
 
-  const tier = tiers.reduce((prev, curr) => {
-    if (!prev) return curr
-    return curr.attributes.amount_cents > prev.attributes.amount_cents ? curr : prev
-  })
+  const tier = tiers.length
+    ? tiers.reduce((prev, curr) => {
+        if (!prev) return curr
+        return curr.attributes.amount_cents > prev.attributes.amount_cents ? curr : prev
+      })
+    : undefined
 
   if (!tier) return { user }
 

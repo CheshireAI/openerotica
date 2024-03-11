@@ -12,10 +12,23 @@ import type { Option } from './Select'
 import { createEffect, onCleanup } from 'solid-js'
 import { UserState, settingStore, userStore } from '../store'
 import { AppSchema } from '/common/types'
+import { deepClone } from '/common/util'
 
 const [css, hooks] = createHooks(recommended)
 
 export { hooks, css }
+
+export function downloadJson(content: string | object, filename: string = 'agnai_export') {
+  const output = encodeURIComponent(
+    typeof content === 'string' ? content : JSON.stringify(content, null, 2)
+  )
+
+  const anchor = document.createElement('a')
+  anchor.href = `data:text/json:charset=utf-8,${output}`
+  anchor.download = `${filename}.json`
+  anchor.click()
+  URL.revokeObjectURL(anchor.href)
+}
 
 export function getMaxChatWidth(chatWidth: UserState['ui']['chatWidth']) {
   switch (chatWidth) {
@@ -49,6 +62,14 @@ export const storage = {
   localRemoveItem,
   localClear,
   test,
+}
+
+export function isExpired(date?: string | Date) {
+  if (!date) return true
+  const comp = typeof date === 'string' ? new Date(date) : date
+  if (isNaN(comp.valueOf())) return true
+
+  return Date.now() >= comp.valueOf()
 }
 
 async function getItem(key: string): Promise<string | null> {
@@ -182,7 +203,7 @@ export function getStrictForm<T extends Validator>(
 
     if (type === 'boolean' || type === 'boolean?') {
       if (value === 'on') value = true
-      if (value === undefined) value = false
+      if (value === undefined || value === 'off') value = false
     }
 
     if ((type === 'number' || type === 'number?') && value !== undefined) {
@@ -224,6 +245,15 @@ export function getFormEntries(evt: Event | HTMLFormElement): Array<[string, str
   const entries = Array.from(form.entries()).map(
     ([key, value]) => [key, value.toString()] as [string, string]
   )
+
+  const dangling = target.querySelectorAll('input[type="checkbox"]') as NodeListOf<HTMLInputElement>
+  for (const input of dangling) {
+    const prev = entries.find((e) => e[0] === input.id)
+    if (prev) continue
+
+    entries.push([input.id, input.checked ? 'on' : ''])
+  }
+
   disable()
 
   return entries
@@ -687,4 +717,93 @@ export function isUsableService(
   }
 
   return false
+}
+
+export function toLocalTime(date: string) {
+  const d = new Date(date)
+  const Y = d.getFullYear()
+  const M = (d.getMonth() + 1).toString().padStart(2, '0')
+  const D = d.getDate().toString().padStart(2, '0')
+
+  const h = d.getHours().toString().padStart(2, '0')
+  const m = d.getMinutes().toString().padStart(2, '0')
+
+  return `${Y}-${M}-${D}T${h}:${m}`
+}
+
+export type FieldUpdater = (index: number, path: string) => (ev: any) => void
+
+/**
+ * init: Initial list of items
+ * empty: Object template to use when adding a new item to the list
+ * @param opts
+ * @returns
+ */
+export function useRowHelper<T extends object>(opts: {
+  signal: [() => T[], (v: T[]) => void]
+  empty: T
+}) {
+  const items = opts.signal[0]
+  const setItems = opts.signal[1]
+
+  const add = () => {
+    const next = items().concat(deepClone(opts.empty))
+    setItems(next)
+  }
+
+  const remove = (index: number) => {
+    const prev = items()
+    const next = prev.slice(0, index).concat(prev.slice(index + 1))
+    setItems(next)
+  }
+
+  const updateItem = (index: number, field: string, value: any) => {
+    const prev = items()
+    const item = setProperty(prev[index], field, value)
+
+    const next = prev
+      .slice(0, index)
+      .concat(item)
+      .concat(prev.slice(index + 1))
+    setItems(next)
+  }
+
+  const updater = (index: number, field: string) => {
+    return (ev: any) => {
+      // Toggle, Radio, ColorPicker, ...
+      if (typeof ev === 'string' || typeof ev === 'number' || typeof ev === 'boolean') {
+        return updateItem(index, field, ev)
+      }
+
+      // Textarea and Input fields
+      if ('currentTarget' in ev) {
+        return updateItem(index, field, ev.currentTarget.value)
+      }
+
+      // Selects
+      if ('label' in ev && 'value' in ev) {
+        return updateItem(index, field, ev.value)
+      }
+
+      // MultiDropdown
+      if (Array.isArray(ev)) {
+        return updateItem(
+          index,
+          field,
+          ev.map((ev) => ev.value)
+        )
+      }
+    }
+  }
+
+  return { add, remove, updateItem, items, updater }
+}
+
+function setProperty(obj: any, path: string, value: any): any {
+  const [head, ...rest] = path.split('.')
+
+  return {
+    ...obj,
+    [head]: rest.length ? setProperty(obj[head], rest.join('.'), value) : value,
+  }
 }

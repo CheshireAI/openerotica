@@ -80,6 +80,10 @@ const updateConfiguration = handle(async ({ body }) => {
       termsOfService: 'string',
       privacyStatement: 'string',
       enabledAdapters: ['string'],
+      imagesEnabled: 'boolean',
+      imagesHost: 'string',
+      imagesModels: ['any'],
+      supportEmail: 'string',
     },
     body
   )

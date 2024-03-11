@@ -9,10 +9,11 @@ import type {
   ThirdPartyFormat,
 } from '../adapters'
 import type { GenerationPreset } from '../presets'
-import type { ImageSettings } from './image-schema'
+import type { BaseImageSettings, ImageSettings } from './image-schema'
 import type { TTSSettings, VoiceSettings } from './texttospeech-schema'
 import { UISettings } from './ui'
 import { FullSprite } from './sprite'
+import { ModelFormat } from '../presets/templates'
 
 export type AllDoc =
   | AppSchema.Announcement
@@ -55,6 +56,8 @@ export namespace AppSchema {
 
     maintenance: boolean
 
+    supportEmail: string
+
     /** Markdown */
     maintenanceMessage: string
 
@@ -74,6 +77,17 @@ export namespace AppSchema {
     /** Concatenated to adapters listed in ADAPTERS envvar */
     /** Not yet implemented */
     enabledAdapters: string[]
+
+    imagesEnabled: boolean
+    imagesHost: string
+    imagesModels: ImageModel[]
+  }
+
+  export type ImageModel = {
+    name: string
+    desc: string
+    init: { steps: number; cfg: number; height: number; width: number }
+    limit: { steps: number; cfg: number; height: number; width: number }
   }
 
   export interface Announcement {
@@ -103,6 +117,8 @@ export namespace AppSchema {
       cost: number
     }
     apiAccess: boolean
+    guidanceAccess: boolean
+    imagesAccess: boolean
 
     name: string
     description: string
@@ -120,6 +136,7 @@ export namespace AppSchema {
     name: string
     level: number
     service: AIAdapter
+    guidance: boolean
     preset: GenSettings
   }
 
@@ -135,6 +152,7 @@ export namespace AppSchema {
     patreon?: boolean
     policies?: boolean
     apiAccess?: boolean
+    guidanceAccess?: boolean
     flags?: string
     patreonAuth?: {
       clientId: string
@@ -172,6 +190,8 @@ export namespace AppSchema {
     avatar?: string
   }
 
+  export type SubscriptionType = 'native' | 'patreon' | 'manual'
+
   export interface User {
     _id: string
 
@@ -194,6 +214,9 @@ export namespace AppSchema {
     thirdPartyPassword: string
     thirdPartyPasswordSet?: boolean
     oobaUrl: string
+
+    mistralKey?: string
+    mistralKeySet?: boolean
 
     oaiKey: string
     oaiKeySet?: boolean
@@ -234,10 +257,16 @@ export namespace AppSchema {
     ui?: UISettings
 
     sub?: {
-      type?: 'native' | 'patreon' | 'manual'
+      type?: SubscriptionType
       tierId: string
       level: number
       last?: string
+    }
+
+    manualSub?: {
+      tierId: string
+      level: number
+      expiresAt: string
     }
 
     patreonUserId?: string | null
@@ -266,6 +295,7 @@ export namespace AppSchema {
       subscriptionId: string
       lastChecked?: string
     }
+    stripeSessions?: string[]
   }
 
   export interface ApiKey {
@@ -326,6 +356,9 @@ export namespace AppSchema {
     scenarioStates?: string[]
 
     treeLeafId?: string
+
+    imageSource?: 'last-character' | 'main-character' | 'chat' | 'settings'
+    imageSettings?: BaseImageSettings
   }
 
   export interface ChatMember {
@@ -343,6 +376,7 @@ export namespace AppSchema {
     kind: 'chat-message'
     chatId: string
     msg: string
+    retries?: string[]
     extras?: string[]
     characterId?: string
     userId?: string
@@ -357,11 +391,12 @@ export namespace AppSchema {
     ooc?: boolean
     system?: boolean
     meta?: any
-    event?: EventTypes | undefined
+    event?: ScenarioEventType | undefined
     state?: string
+    values?: Record<string, string | number | boolean>
   }
 
-  export type EventTypes = 'world' | 'character' | 'hidden' | 'ooc'
+  export type ScenarioEventType = 'world' | 'character' | 'hidden' | 'ooc'
 
   /** Description of the character or user */
   export type Persona =
@@ -402,6 +437,8 @@ export namespace AppSchema {
     voice?: VoiceSettings
     voiceDisabled?: boolean
 
+    image?: ImageSettings
+
     // v2 stuff
     alternateGreetings?: string[]
     characterBook?: MemoryBook
@@ -412,6 +449,7 @@ export namespace AppSchema {
     creator?: string
     characterVersion?: string
     folder?: string
+    imageSettings?: BaseImageSettings
   }
 
   export interface ChatInvite {
@@ -460,6 +498,7 @@ export namespace AppSchema {
     isDefaultSub?: boolean
     deletedAt?: string
     tokenizer?: string
+    guidanceCapable?: boolean
   }
 
   export interface GenSettings {
@@ -467,6 +506,9 @@ export namespace AppSchema {
     service?: AIAdapter
 
     temp: number
+    dynatemp_range?: number
+    dynatemp_exponent?: number
+    smoothingFactor?: number
     maxTokens: number
     maxContextLength?: number
     repetitionPenalty: number
@@ -489,6 +531,10 @@ export namespace AppSchema {
     earlyStopping?: boolean
     stopSequences?: string[]
     trimStop?: boolean
+    etaCutoff?: number
+    epsilonCutoff?: number
+    swipesPerGeneration?: number
+    mirostatToggle?: boolean
 
     order?: number[]
     disabledSamplers?: number[]
@@ -504,10 +550,12 @@ export namespace AppSchema {
     ignoreCharacterSystemPrompt?: boolean
     gaslight?: string
     promptTemplateId?: string
+    modelFormat?: ModelFormat
     useAdvancedPrompt?: 'basic' | 'validate' | 'no-validation'
     promptOrderFormat?: string
     promptOrder?: Array<{ placeholder: string; enabled: boolean }>
     ultimeJailbreak?: string
+    prefixNameAppend?: boolean
     prefill?: string
     ignoreCharacterUjb?: boolean
     antiBond?: boolean
@@ -517,6 +565,7 @@ export namespace AppSchema {
     oaiModel?: string
     novelModel?: string
     claudeModel?: string
+    mistralModel?: string
     openRouterModel?: OpenRouterModel
 
     thirdPartyUrl?: string
@@ -617,7 +666,7 @@ export namespace AppSchema {
     name: string
     requires: string[]
     assigns: string[]
-    type: EventTypes
+    type: ScenarioEventType
     text: string
     trigger: T
   }
@@ -653,6 +702,11 @@ export namespace AppSchema {
     id: string
     label: string
     previewUrl?: string
+  }
+
+  export interface VoiceModelDefinition {
+    id: string
+    label: string
   }
 }
 
